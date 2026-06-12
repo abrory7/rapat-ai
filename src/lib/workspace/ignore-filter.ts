@@ -1,5 +1,3 @@
-import path from 'path';
-
 /**
  * Parses ignore rules from a newline-separated string.
  * Skips comments (#) and empty lines.

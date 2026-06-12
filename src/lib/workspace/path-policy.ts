@@ -24,7 +24,7 @@ export function resolveWorkspacePath(
   let rootRealPath: string;
   try {
     rootRealPath = fs.realpathSync(rootPath);
-  } catch (err) {
+  } catch {
     throw new Error('Access Denied');
   }
 
@@ -54,7 +54,7 @@ export function resolveWorkspacePath(
     try {
       const target = fs.readlinkSync(resolvedAbsolutePath);
       resolvedAbsolutePath = path.resolve(path.dirname(resolvedAbsolutePath), target);
-    } catch (err) {
+    } catch {
       throw new Error('Access Denied');
     }
   }
@@ -68,7 +68,7 @@ export function resolveWorkspacePath(
   if (exists) {
     try {
       resolvedAbsolutePath = fs.realpathSync(resolvedAbsolutePath);
-    } catch (err) {
+    } catch {
       throw new Error('Access Denied');
     }
   } else {
@@ -85,7 +85,7 @@ export function resolveWorkspacePath(
       try {
         const realCurrent = fs.realpathSync(current);
         resolvedAbsolutePath = path.resolve(realCurrent, suffix);
-      } catch (err) {
+      } catch {
         throw new Error('Access Denied');
       }
     }

@@ -8,6 +8,7 @@ import { resolveWorkspacePath } from './path-policy';
 describe('resolveWorkspacePath', () => {
   let tempDir: string;
   let workspaceRoot: string;
+  let symlinksSupported = true;
 
   before(() => {
     // Create a temporary workspace root
@@ -33,8 +34,8 @@ describe('resolveWorkspacePath', () => {
       fs.symlinkSync(path.join(tempDir, 'non-existent-outside.txt'), path.join(workspaceRoot, 'dangling-unsafe-symlink'));
       // Dangling symlink resolving inside the workspace
       fs.symlinkSync(path.join(workspaceRoot, 'non-existent-inside.txt'), path.join(workspaceRoot, 'dangling-safe-symlink'));
-    } catch (err) {
-      console.warn('Symlink creation not fully supported in this environment, skipping symlink tests:', err);
+    } catch {
+      symlinksSupported = false;
     }
   });
 
@@ -42,8 +43,8 @@ describe('resolveWorkspacePath', () => {
     // Clean up temporary workspace
     try {
       fs.rmSync(tempDir, { recursive: true, force: true });
-    } catch (err) {
-      console.error('Failed to clean up temp dir:', err);
+    } catch {
+      // Ignore cleanup error
     }
   });
 
@@ -86,42 +87,42 @@ describe('resolveWorkspacePath', () => {
     }, /Access Denied/);
   });
 
-  it('rejects a symlink resolving outside the workspace', () => {
-    const symlinkPath = path.join(workspaceRoot, 'unsafe-symlink');
-    if (fs.existsSync(symlinkPath)) {
-      assert.throws(() => {
-        resolveWorkspacePath(workspaceRoot, 'unsafe-symlink', { mustExist: true });
-      }, /Access Denied/);
+  it('rejects a symlink resolving outside the workspace', (t) => {
+    if (!symlinksSupported) {
+      t.skip('Symlinks not supported by host OS');
+      return;
     }
+    assert.throws(() => {
+      resolveWorkspacePath(workspaceRoot, 'unsafe-symlink', { mustExist: true });
+    }, /Access Denied/);
   });
 
-  it('rejects a dangling symlink resolving outside the workspace', () => {
-    const symlinkPath = path.join(workspaceRoot, 'dangling-unsafe-symlink');
-    try {
-      if (fs.lstatSync(symlinkPath).isSymbolicLink()) {
-        assert.throws(() => {
-          resolveWorkspacePath(workspaceRoot, 'dangling-unsafe-symlink');
-        }, /Access Denied/);
-      }
-    } catch {}
-  });
-
-  it('resolves a dangling symlink resolving inside the workspace (when mustExist is false)', () => {
-    const symlinkPath = path.join(workspaceRoot, 'dangling-safe-symlink');
-    try {
-      if (fs.lstatSync(symlinkPath).isSymbolicLink()) {
-        const result = resolveWorkspacePath(workspaceRoot, 'dangling-safe-symlink', { mustExist: false });
-        assert.equal(result.relativePath, 'non-existent-inside.txt');
-      }
-    } catch {}
-  });
-
-  it('resolves a symlink resolving to another location inside the workspace', () => {
-    const symlinkPath = path.join(workspaceRoot, 'safe-symlink');
-    if (fs.existsSync(symlinkPath)) {
-      const result = resolveWorkspacePath(workspaceRoot, 'safe-symlink');
-      assert.equal(result.relativePath, 'src/app.ts');
+  it('rejects a dangling symlink resolving outside the workspace', (t) => {
+    if (!symlinksSupported) {
+      t.skip('Symlinks not supported by host OS');
+      return;
     }
+    assert.throws(() => {
+      resolveWorkspacePath(workspaceRoot, 'dangling-unsafe-symlink');
+    }, /Access Denied/);
+  });
+
+  it('resolves a dangling symlink resolving inside the workspace (when mustExist is false)', (t) => {
+    if (!symlinksSupported) {
+      t.skip('Symlinks not supported by host OS');
+      return;
+    }
+    const result = resolveWorkspacePath(workspaceRoot, 'dangling-safe-symlink', { mustExist: false });
+    assert.equal(result.relativePath, 'non-existent-inside.txt');
+  });
+
+  it('resolves a symlink resolving to another location inside the workspace', (t) => {
+    if (!symlinksSupported) {
+      t.skip('Symlinks not supported by host OS');
+      return;
+    }
+    const result = resolveWorkspacePath(workspaceRoot, 'safe-symlink');
+    assert.equal(result.relativePath, 'src/app.ts');
   });
 
   it('throws on a missing path if mustExist is true', () => {

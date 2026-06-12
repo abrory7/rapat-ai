@@ -33,9 +33,10 @@ export const listFilesTool = createTool({
       const ignoreRules = parseIgnoreRules(project.ignoreRules);
       const entries = listFiles(project.repoPath, relativePath || '', ignoreRules);
       return { success: true, entries };
-    } catch (err: any) {
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
       console.error(err);
-      return { success: false, error: err.message };
+      return { success: false, error: errMsg };
     }
   },
 });
@@ -53,9 +54,10 @@ export const readFileTool = createTool({
       const ignoreRules = parseIgnoreRules(project.ignoreRules);
       const content = readFile(project.repoPath, filePath, ignoreRules);
       return { success: true, content };
-    } catch (err: any) {
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
       console.error(err);
-      return { success: false, error: err.message };
+      return { success: false, error: errMsg };
     }
   },
 });
@@ -73,9 +75,10 @@ export const searchCodeTool = createTool({
       const ignoreRules = parseIgnoreRules(project.ignoreRules);
       const matches = searchCode(project.repoPath, query, ignoreRules);
       return { success: true, matches };
-    } catch (err: any) {
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
       console.error(err);
-      return { success: false, error: err.message };
+      return { success: false, error: errMsg };
     }
   },
 });
@@ -96,10 +99,7 @@ export const writeOutputTool = createTool({
       if (!fileName || fileName !== baseName || baseName === '.' || baseName === '..') {
         throw new Error('Access Denied');
       }
-
-      // Resolve outputDir through path-policy (mustExist: false)
       const resolvedOutputDir = resolveWorkspacePath(project.repoPath, '.rapat-ai/outputs', { mustExist: false });
-      
       if (!fs.existsSync(resolvedOutputDir.absolutePath)) {
         fs.mkdirSync(resolvedOutputDir.absolutePath, { recursive: true });
       }
@@ -109,16 +109,17 @@ export const writeOutputTool = createTool({
       
       // Write with O_NOFOLLOW to reject writing to symlinks (preventing dangling symlink exploitation)
       fs.writeFileSync(targetFilePath.absolutePath, content, {
-        flag: fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_TRUNC | fs.constants.O_NOFOLLOW
+        flag: (fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_TRUNC | fs.constants.O_NOFOLLOW) as unknown as string
       });
       
       return {
         success: true,
         filePath: targetFilePath.relativePath,
       };
-    } catch (err: any) {
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
       console.error(err);
-      return { success: false, error: err.message };
+      return { success: false, error: errMsg };
     }
   },
 });

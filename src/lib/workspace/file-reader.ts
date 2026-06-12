@@ -1,5 +1,4 @@
 import fs from 'fs';
-import path from 'path';
 import { isIgnored } from './ignore-filter';
 import { resolveWorkspacePath } from './path-policy';
 
