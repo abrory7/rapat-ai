@@ -35,7 +35,7 @@ export function listFiles(
       ? path.join(resolved.relativePath, item).replace(/\\/g, '/')
       : item;
 
-    if (isIgnored(cleanRelativePath, ignoreRules)) {
+    if (isIgnored(cleanRelativePath, ignoreRules, rootPath)) {
       continue;
     }
 
@@ -49,7 +49,7 @@ export function listFiles(
         try {
           childrenCount = fs.readdirSync(resolvedItem.absolutePath).filter((child) => {
             const childRelative = path.join(resolvedItem.relativePath, child).replace(/\\/g, '/');
-            return !isIgnored(childRelative, ignoreRules);
+            return !isIgnored(childRelative, ignoreRules, rootPath);
           }).length;
         } catch {
           childrenCount = 0;

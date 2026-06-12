@@ -146,5 +146,9 @@ Treat `.secret` and the SQLite database as one backup unit. Restoring the
 database without its matching `.secret` file makes encrypted credentials
 unrecoverable. Keep `.secret`, `.env`, and database files readable only by your
 OS user (`chmod 600 .secret .env prisma/dev.db` on Unix-like systems).
-*   **Workspace Protection:** Secure workspace tools automatically respect your project's [.gitignore](file:///Users/abrory7/Kantor/Web/rapat-ai/.gitignore) file. AI agents cannot read, search, or expose your private `.env` files or git histories.
+*   **Workspace Protection:** Workspace operations (reads, listings, searches, and writes) are strictly confined to the registered project root:
+    *   **Root Confinement:** The resolver rejects absolute paths, directory traversal attacks (`..`), null bytes, and all symlinks (including dangling ones) that point outside the project root boundary.
+    *   **No-Follow Protection:** Final output writes enforce the `O_NOFOLLOW` flag to prevent writing through destination symlinks.
+    *   **Immutable Exclusions:** Hard-denies sensitive files/folders—such as `.git`, `.env` / `.env.*`, `.secret`, key/certificate files (`*.pem`, `*.key`, `*.p12`, `*.pfx`), SQLite databases and journals (`*.db`, `*.sqlite`, `*-journal`), build/dependencies folders (`dist`, `build`, `out`, `node_modules`, `.next`), and `.rapat-ai` configurations. Custom negation rules (e.g., `!node_modules`) are blocked from re-enabling these paths.
+    *   **Integrated Ignores:** Automatically loads and merges the project's `.gitignore` file with custom project ignore rules, executing standard `.gitignore` semantics.
 *   **Database Isolation:** All configurations, projects, and discussions are kept locally inside your private `prisma/dev.db` database.

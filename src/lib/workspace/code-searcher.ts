@@ -76,7 +76,7 @@ export function searchCode(
         const fullPath = path.join(resolvedDir.absolutePath, file);
         const relativePath = path.relative(resolvedRoot.absolutePath, fullPath).replace(/\\/g, '/');
 
-        if (isIgnored(relativePath, ignoreRules)) {
+        if (isIgnored(relativePath, ignoreRules, rootPath)) {
           continue;
         }
 

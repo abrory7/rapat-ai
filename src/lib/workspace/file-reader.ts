@@ -14,7 +14,7 @@ export function readFile(
 ): string {
   const resolved = resolveWorkspacePath(rootPath, filePath, { mustExist: true });
 
-  if (isIgnored(resolved.relativePath, ignoreRules)) {
+  if (isIgnored(resolved.relativePath, ignoreRules, rootPath)) {
     throw new Error(`Access Denied: File is ignored or restricted: ${resolved.relativePath}`);
   }
 

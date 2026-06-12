@@ -1,3 +1,27 @@
+import fs from 'fs';
+import path from 'path';
+import ignore from 'ignore';
+
+const PERMANENT_EXCLUSIONS = [
+  '.git',
+  '.env',
+  '.env.*',
+  '.secret',
+  '*.pem',
+  '*.key',
+  '*.p12',
+  '*.pfx',
+  '*.db',
+  '*.sqlite',
+  '*-journal',
+  'node_modules',
+  '.next',
+  'dist',
+  'build',
+  'out',
+  '.rapat-ai',
+];
+
 /**
  * Parses ignore rules from a newline-separated string.
  * Skips comments (#) and empty lines.
@@ -13,50 +37,35 @@ export function parseIgnoreRules(rulesString?: string | null): string[] {
 /**
  * Checks if a given file path is ignored based on gitignore-like rules.
  */
-export function isIgnored(filePath: string, rules: string[]): boolean {
-  // Always ignore version control, dependencies, and outputs
-  const defaultIgnores = ['.git', 'node_modules', '.next', '.rapat-ai', 'package-lock.json', 'yarn.lock', 'pnpm-lock.yaml'];
+export function isIgnored(filePath: string, rules: string[], rootPath?: string): boolean {
+  // Normalize path separators to forward slashes for matching
   const normalizedPath = filePath.replace(/\\/g, '/');
-  const parts = normalizedPath.split('/');
 
-  if (parts.some((part) => defaultIgnores.includes(part))) {
+  // 1. Enforce permanent exclusions first (immutable and non-negatable)
+  const permIgnore = ignore().add(PERMANENT_EXCLUSIONS);
+  if (permIgnore.ignores(normalizedPath)) {
     return true;
   }
 
-  for (const rule of rules) {
-    let cleanRule = rule.trim();
-    if (!cleanRule) continue;
-    
-    const isDirOnly = cleanRule.endsWith('/');
-    if (isDirOnly) {
-      cleanRule = cleanRule.slice(0, -1);
-    }
-
-    // Convert wildcards: * -> .*, ? -> .
-    let regexStr = cleanRule
-      .replace(/[-\/\\^$+?.()|[\]{}]/g, '\\$&') // escape regex chars
-      .replace(/\\\*/g, '.*')                  // match any characters for *
-      .replace(/\\\?/g, '.');                  // match single character for ?
-
-    if (cleanRule.includes('/')) {
-      if (cleanRule.startsWith('/')) {
-        regexStr = '^' + regexStr.substring(2);
-      } else {
-        regexStr = '^' + regexStr;
+  // 2. Load and parse .gitignore from rootPath if available
+  const mergedRules = [...rules];
+  if (rootPath) {
+    const gitignorePath = path.join(rootPath, '.gitignore');
+    if (fs.existsSync(gitignorePath)) {
+      try {
+        const content = fs.readFileSync(gitignorePath, 'utf8');
+        const parsed = parseIgnoreRules(content);
+        mergedRules.push(...parsed);
+      } catch {
+        // Ignore read errors
       }
-    } else {
-      regexStr = '(^|\\/)' + regexStr + '($|\\/)';
     }
+  }
 
-    try {
-      const regex = new RegExp(regexStr);
-      if (regex.test(normalizedPath)) {
-        return true;
-      }
-    } catch (e) {
-      // Ignore invalid regex patterns from bad rules
-      console.warn(`Invalid ignore rule regex pattern: ${regexStr}`, e);
-    }
+  // 3. Match against combined custom project rules and .gitignore
+  if (mergedRules.length > 0) {
+    const customIgnore = ignore().add(mergedRules);
+    return customIgnore.ignores(normalizedPath);
   }
 
   return false;
