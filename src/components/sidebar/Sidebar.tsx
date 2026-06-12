@@ -14,14 +14,16 @@ import {
   ClipboardList,
   Home,
   ChevronRight,
+  PanelLeftClose,
+  PanelLeftOpen,
   Plus,
   X
 } from 'lucide-react';
 import ThemeToggle from '../ui/ThemeToggle';
 import Modal from '../ui/Modal';
 import ProjectForm from '../project/ProjectForm';
-import Button from '../ui/Button';
 import styles from './Sidebar.module.css';
+import { getSidebarPresentation } from './sidebar-presentation';
 
 interface Project {
   id: string;
@@ -38,12 +40,20 @@ interface Session {
 
 interface SidebarProps {
   isOpen?: boolean;
+  isCollapsed?: boolean;
   onClose?: () => void;
+  onToggleCollapsed?: () => void;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ isOpen = false, onClose }) => {
+export const Sidebar: React.FC<SidebarProps> = ({
+  isOpen = false,
+  isCollapsed = false,
+  onClose,
+  onToggleCollapsed,
+}) => {
   const pathname = usePathname();
   const router = useRouter();
+  const presentation = getSidebarPresentation(isCollapsed);
   const [projects, setProjects] = useState<Project[]>([]);
   const [expandedProjects, setExpandedProjects] = useState<Record<string, boolean>>({});
   const [sessions, setSessions] = useState<Record<string, Session[]>>({});
@@ -138,16 +148,40 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen = false, onClose }) => 
     pathname === `/project/${projId}/session/${sessId}`;
 
   return (
-    <aside className={`${styles.sidebar} ${isOpen ? styles.open : ''}`}>
+    <aside
+      id="app-sidebar"
+      className={`${styles.sidebar} ${isOpen ? styles.open : ''} ${
+        isCollapsed ? styles.collapsed : ''
+      }`}
+    >
       <div className={styles.header}>
-        <Link href="/" className={styles.logoArea}>
+        <Link
+          href="/"
+          className={styles.logoArea}
+          aria-label="Rapat AI dashboard"
+          title={presentation.isIconOnly ? 'Rapat AI dashboard' : undefined}
+        >
           <div className={styles.logoIcon}>
             <BrainCircuit size={20} className={styles.botIcon} />
           </div>
           <span className={styles.logoTitle}>Rapat AI</span>
         </Link>
+        {onToggleCollapsed && (
+          <button
+            type="button"
+            onClick={onToggleCollapsed}
+            className={styles.desktopToggle}
+            aria-label={presentation.toggleLabel}
+            aria-expanded={presentation.ariaExpanded}
+            aria-controls="app-sidebar"
+            title={presentation.toggleLabel}
+          >
+            {isCollapsed ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}
+          </button>
+        )}
         {onClose && (
           <button
+            type="button"
             onClick={onClose}
             className={styles.closeBtn}
             aria-label="Close Sidebar"
@@ -159,7 +193,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen = false, onClose }) => 
 
       <div className={styles.navSection}>
         {/* Projects Section */}
-        <div>
+        <div className={styles.projectsSection}>
           <div className={styles.sectionTitle}>
             <span>Projects</span>
             <button
@@ -259,7 +293,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen = false, onClose }) => 
         </div>
 
         {/* Settings Section */}
-        <div>
+        <div className={styles.settingsSection}>
           <div className={styles.sectionTitle}>
             <span>Settings</span>
           </div>
@@ -267,26 +301,38 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen = false, onClose }) => 
             <Link
               href="/settings/providers"
               className={`${styles.settingsItem} ${isActive('/settings/providers') ? styles.active : ''}`}
+              aria-label="Providers"
+              title={presentation.isIconOnly ? 'Providers' : undefined}
             >
-              <Key size={16} /> Providers
+              <Key size={16} />
+              <span className={styles.navLabel}>Providers</span>
             </Link>
             <Link
               href="/settings/roles"
               className={`${styles.settingsItem} ${isActive('/settings/roles') ? styles.active : ''}`}
+              aria-label="Discussion Roles"
+              title={presentation.isIconOnly ? 'Discussion Roles' : undefined}
             >
-              <Users size={16} /> Discussion Roles
+              <Users size={16} />
+              <span className={styles.navLabel}>Discussion Roles</span>
             </Link>
             <Link
               href="/settings/skills"
               className={`${styles.settingsItem} ${isActive('/settings/skills') ? styles.active : ''}`}
+              aria-label="Expert Skills"
+              title={presentation.isIconOnly ? 'Expert Skills' : undefined}
             >
-              <Lightbulb size={16} /> Expert Skills
+              <Lightbulb size={16} />
+              <span className={styles.navLabel}>Expert Skills</span>
             </Link>
             <Link
               href="/settings/templates"
               className={`${styles.settingsItem} ${isActive('/settings/templates') ? styles.active : ''}`}
+              aria-label="Lineup Templates"
+              title={presentation.isIconOnly ? 'Lineup Templates' : undefined}
             >
-              <ClipboardList size={16} /> Lineup Templates
+              <ClipboardList size={16} />
+              <span className={styles.navLabel}>Lineup Templates</span>
             </Link>
           </nav>
         </div>
@@ -296,8 +342,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen = false, onClose }) => 
         <Link
           href="/"
           className={styles.footerLink}
+          aria-label="Dashboard"
+          title={presentation.isIconOnly ? 'Dashboard' : undefined}
         >
-          <Home size={16} /> Dashboard
+          <Home size={16} />
+          <span className={styles.navLabel}>Dashboard</span>
         </Link>
         <ThemeToggle />
       </div>

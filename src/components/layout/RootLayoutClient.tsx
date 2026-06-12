@@ -16,6 +16,7 @@ export const RootLayoutClient: React.FC<RootLayoutClientProps> = ({ children }) 
   const [checkingProviders, setCheckingProviders] = useState(true);
   const [hasProviders, setHasProviders] = useState<boolean | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
   useEffect(() => {
     const checkProviders = async () => {
@@ -86,7 +87,12 @@ export const RootLayoutClient: React.FC<RootLayoutClientProps> = ({ children }) 
 
   return (
     <div className={styles.layoutContainer}>
-      <Sidebar isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} />
+      <Sidebar
+        isOpen={isSidebarOpen}
+        isCollapsed={isSidebarCollapsed}
+        onClose={() => setIsSidebarOpen(false)}
+        onToggleCollapsed={() => setIsSidebarCollapsed((collapsed) => !collapsed)}
+      />
       
       {/* Mobile background backdrop overlay */}
       {isSidebarOpen && (
