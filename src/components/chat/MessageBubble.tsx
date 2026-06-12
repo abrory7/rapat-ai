@@ -2,8 +2,19 @@ import React from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeRaw from 'rehype-raw';
+import rehypeSanitize from 'rehype-sanitize';
+import { markdownSanitizeSchema } from './markdown-policy';
 import ToolCallIndicator from './ToolCallIndicator';
 import styles from './MessageBubble.module.css';
+
+const renderLink = ({ node, ...props }: any) => {
+  const href = props.href || '';
+  const isExternal = href.startsWith('http://') || href.startsWith('https://');
+  if (isExternal) {
+    return <a {...props} target="_blank" rel="noopener noreferrer" />;
+  }
+  return <a {...props} />;
+};
 
 interface MessageBubbleProps {
   sender: string; // "Project Manager", "USER", "SYSTEM" etc.
@@ -143,7 +154,11 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
       </div>
 
       <div className={styles.content}>
-        <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}>
+        <ReactMarkdown 
+          remarkPlugins={[remarkGfm]} 
+          rehypePlugins={[rehypeRaw, [rehypeSanitize, markdownSanitizeSchema]]}
+          components={{ a: renderLink }}
+        >
           {preprocessCustomTags(content)}
         </ReactMarkdown>
       </div>
