@@ -20,6 +20,18 @@ Rapat AI is built using modern, fast, and secure developer-focused technologies:
 
 ---
 
+## 📂 Project Directory Map
+
+Here is a guide to the key directories in this project:
+
+*   [`prisma/`](file:///Users/abrory7/Kantor/Web/rapat-ai/prisma) - Database configuration, SQLite schema ([`schema.prisma`](file:///Users/abrory7/Kantor/Web/rapat-ai/prisma/schema.prisma)), and seeding data.
+*   [`src/app/`](file:///Users/abrory7/Kantor/Web/rapat-ai/src/app) - Next.js page views, API endpoints, and styles.
+*   [`src/mastra/`](file:///Users/abrory7/Kantor/Web/rapat-ai/src/mastra) - Mastra Agent Framework setup (defining agents, agent tools, and compilation workflows).
+*   [`src/lib/orchestrator/`](file:///Users/abrory7/Kantor/Web/rapat-ai/src/lib/orchestrator) - Core engine coordinating agent turns, decision extraction, and parsing.
+*   [`src/lib/crypto/`](file:///Users/abrory7/Kantor/Web/rapat-ai/src/lib/crypto) - AES-256-GCM encryption utilities for safeguarding API keys.
+
+---
+
 ## 🚀 Key Features
 
 *   **Autopilot Discussions:** Select pre-defined templates (e.g., Feature Planning, Architecture Design, Code Review) and watch AI agents debate and resolve engineering details.
@@ -27,6 +39,15 @@ Rapat AI is built using modern, fast, and secure developer-focused technologies:
 *   **Model Context Protocol (MCP):** Connect custom stdio or SSE MCP servers on demand to extend agent capabilities.
 *   **Human-in-the-Loop Supervision:** Real-time chat dashboard displaying discussion steps, detected project badges (Flags, Decisions, Parking Lot), and instant Markdown previews.
 *   **Multi-Provider Support:** Plug in models from OpenAI, Anthropic, Google Gemini, or run local models via Ollama.
+
+### 🤖 Agent Workspace Tools
+
+When agents are running a discussion inside a registered project workspace, they have access to local-only tools to analyze and output files:
+
+*   `list_files` - Lists workspace directory contents while automatically respecting `.gitignore` rules.
+*   `read_file` - Reads file contents (up to 100KB) into context.
+*   `search_code` - Performs fast text pattern searches across files.
+*   `write_output` - Writes the resulting specifications and diagrams directly to the target project's `.rapat-ai/outputs/` directory.
 
 ---
 
@@ -65,6 +86,16 @@ npm run dev
 ```
 
 Open **[http://localhost:3000](http://localhost:3000)** in your web browser to access the Rapat AI Workspace.
+
+### 🧪 Running Tests
+You can run the built-in test suites to verify functionality and security:
+```bash
+# Test the agent orchestrator state machine and parser
+npm run test:orchestrator
+
+# Test security rules, API key cryptography, and MCP safety checks
+npm run test:security
+```
 
 ---
 
