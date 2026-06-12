@@ -1,11 +1,16 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
-import { PlugZap, Activity, MessageSquare, Cpu, Send, AlertTriangle, Bot } from 'lucide-react';
+import { PlugZap, Activity, Send, AlertTriangle, Bot } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Modal from '@/components/ui/Modal';
 import ProviderForm from '@/components/settings/ProviderForm';
+import { revealProviderTestResult } from '@/components/settings/provider-test-result';
+import {
+  PROVIDER_TEST_PROMPTS,
+  type ProviderTestPromptId,
+} from '@/lib/providers/provider-test-policy';
 import styles from '../Settings.module.css';
 import formStyles from '@/components/settings/Form.module.css';
 
@@ -28,10 +33,12 @@ export default function ProvidersPage() {
   // Model testing states
   const [selectedTestProviderId, setSelectedTestProviderId] = useState('');
   const [selectedTestModelId, setSelectedTestModelId] = useState('');
-  const [testPrompt, setTestPrompt] = useState('halo, apakah tes berhasil?');
+  const [selectedTestPromptId, setSelectedTestPromptId] =
+    useState<ProviderTestPromptId>('ping');
   const [testResponse, setTestResponse] = useState('');
   const [isTestingModel, setIsTestingModel] = useState(false);
   const [testModelError, setTestModelError] = useState('');
+  const testResultRef = useRef<HTMLDivElement>(null);
 
   const getModelFailureKey = (providerId: string, modelId: string) => `${providerId}:${modelId}`;
 
@@ -70,10 +77,16 @@ export default function ProvidersPage() {
     fetchProviders();
   }, [fetchProviders]);
 
+  useEffect(() => {
+    if (!testResponse && !testModelError) return;
+
+    revealProviderTestResult(testResultRef.current);
+  }, [testResponse, testModelError]);
+
   const handleRunModelTest = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedTestProviderId || !selectedTestModelId || !testPrompt.trim()) {
-      alert('Please select a provider, model, and write a prompt.');
+    if (!selectedTestProviderId || !selectedTestModelId) {
+      alert('Please select a provider and model.');
       return;
     }
 
@@ -88,7 +101,7 @@ export default function ProvidersPage() {
         body: JSON.stringify({
           providerId: selectedTestProviderId,
           modelId: selectedTestModelId,
-          prompt: testPrompt.trim(),
+          promptId: selectedTestPromptId,
         }),
       });
 
@@ -254,32 +267,25 @@ export default function ProvidersPage() {
       )}
 
       {/* Dynamic Model Test Section */}
-      <div style={{ marginTop: 40, borderTop: '1px solid var(--border-color)', paddingTop: 40 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: 8 }}>
+      <div className={styles.providerTestSection}>
+        <div className={styles.providerTestHeading}>
           <Activity color="var(--accent-primary)" size={24} />
-          <h2 style={{ fontSize: '1.5rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+          <h2>
             Test Provider Response
           </h2>
         </div>
-        <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: 24 }}>
+        <p className={styles.providerTestDescription}>
           Send a quick test message to any of your registered AI providers and check their actual response.
         </p>
 
         {providers.length === 0 ? (
-          <div style={{
-            padding: 24,
-            backgroundColor: 'var(--bg-secondary)',
-            border: '1px solid var(--border-color)',
-            borderRadius: 12,
-            color: 'var(--text-tertiary)',
-            textAlign: 'center'
-          }}>
+          <div className={styles.providerTestEmpty}>
             Please add at least one AI Provider to test response.
           </div>
         ) : (
-          <div className={styles.card} style={{ minHeight: 'auto', gap: 20 }}>
-            <form onSubmit={handleRunModelTest} style={{ width: '100%' }}>
-              <div className={formStyles.row} style={{ marginBottom: 16 }}>
+          <div className={styles.providerTestPanel}>
+            <form onSubmit={handleRunModelTest}>
+              <div className={styles.providerTestSelectors}>
                 <div className={formStyles.formGroup}>
                   <label className={formStyles.label}>Select Provider</label>
                   <select
@@ -331,49 +337,47 @@ export default function ProvidersPage() {
                 </div>
               </div>
 
-              {/* Template Buttons */}
-              <div className={formStyles.formGroup} style={{ marginBottom: 16 }}>
-                <label className={formStyles.label}>Prompt Templates (Click to fill)</label>
-                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                  <button
-                    type="button"
-                    onClick={() => setTestPrompt('halo, apakah tes berhasil?')}
-                    className={styles.tag}
-                    style={{ cursor: 'pointer', border: '1px solid var(--border-color)', background: 'var(--bg-tertiary)', transition: 'background-color 0.2s' }}
-                    onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-primary)'}
-                    onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-tertiary)'}
-                    disabled={isTestingModel}
-                  >
-                    <MessageSquare size={14} style={{ display: 'inline', marginRight: 4 }} /> halo, apakah tes berhasil?
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setTestPrompt('model apa yang sedang saya gunakan sekarang?')}
-                    className={styles.tag}
-                    style={{ cursor: 'pointer', border: '1px solid var(--border-color)', background: 'var(--bg-tertiary)', transition: 'background-color 0.2s' }}
-                    onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-primary)'}
-                    onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-tertiary)'}
-                    disabled={isTestingModel}
-                  >
-                    <Cpu size={14} style={{ display: 'inline', marginRight: 4 }} /> model apa yang sedang saya gunakan sekarang?
-                  </button>
-                </div>
-              </div>
+              <div className={styles.providerTestActions}>
+                <fieldset className={styles.promptPresetFieldset}>
+                  <legend className={formStyles.label}>Test Prompt</legend>
+                  <div className={styles.promptPresetList}>
+                    {PROVIDER_TEST_PROMPTS.map((preset) => {
+                      const isSelected = selectedTestPromptId === preset.id;
+                      const chipLabel =
+                        preset.id === 'connection-test'
+                          ? 'Connection'
+                          : preset.id === 'model-check'
+                            ? 'Model'
+                            : preset.label;
 
-              <div className={formStyles.formGroup} style={{ marginBottom: 20 }}>
-                <label className={formStyles.label}>Prompt / Message</label>
-                <textarea
-                  className={formStyles.textarea}
-                  rows={3}
-                  value={testPrompt}
-                  onChange={(e) => setTestPrompt(e.target.value)}
-                  placeholder="Enter prompt to test model connection..."
-                  disabled={isTestingModel}
-                  required
-                />
-              </div>
+                      return (
+                        <label
+                          key={preset.id}
+                          className={`${styles.promptPresetChip} ${
+                            isSelected ? styles.promptPresetChipSelected : ''
+                          }`}
+                        >
+                          <input
+                            className={styles.visuallyHidden}
+                            type="radio"
+                            name="provider-test-prompt"
+                            value={preset.id}
+                            checked={isSelected}
+                            onChange={(event) =>
+                              setSelectedTestPromptId(
+                                event.target.value as ProviderTestPromptId
+                              )
+                            }
+                            disabled={isTestingModel}
+                            aria-label={`${preset.label}: ${preset.prompt}`}
+                          />
+                          <span>{chipLabel}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </fieldset>
 
-              <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: testResponse || testModelError ? 20 : 0 }}>
                 <Button
                   type="submit"
                   variant="primary"
@@ -385,31 +389,27 @@ export default function ProvidersPage() {
               </div>
             </form>
 
-            {/* Test Results Output */}
             {(testResponse || testModelError) && (
-              <div className="animate-fade-in-up" style={{
-                width: '100%',
-                padding: '16px',
-                borderRadius: '8px',
-                border: `1px solid ${testModelError ? 'var(--danger)' : 'var(--border-color)'}`,
-                backgroundColor: 'var(--bg-primary)',
-                marginTop: 10
-              }}>
-                <span style={{
-                  fontSize: '0.85rem',
-                  fontWeight: 600,
-                  color: testModelError ? 'var(--danger)' : 'var(--accent-primary)',
-                  display: 'block',
-                  marginBottom: 8
-                }}>
-                  {testModelError ? <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><AlertTriangle size={14} /> ERROR RESPONSE</span> : <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><Bot size={14} /> MODEL RESPONSE</span>}
+              <div
+                ref={testResultRef}
+                className={`${styles.providerTestResult} ${
+                  testModelError ? styles.providerTestResultError : ''
+                }`}
+                tabIndex={-1}
+                role={testModelError ? 'alert' : 'status'}
+              >
+                <span className={styles.providerTestResultLabel}>
+                  {testModelError ? (
+                    <>
+                      <AlertTriangle size={14} /> Error
+                    </>
+                  ) : (
+                    <>
+                      <Bot size={14} /> Response
+                    </>
+                  )}
                 </span>
-                <p style={{
-                  fontSize: '0.95rem',
-                  color: 'var(--text-primary)',
-                  whiteSpace: 'pre-wrap',
-                  lineHeight: '1.5'
-                }}>
+                <p>
                   {testModelError || testResponse}
                 </p>
               </div>

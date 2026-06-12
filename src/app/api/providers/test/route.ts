@@ -3,6 +3,18 @@ import { prisma } from '@/lib/db';
 import { decrypt } from '@/lib/crypto/encryption';
 import { diagnoseError, normalizeBaseUrl } from '@/lib/providers/url-normalizer';
 import { safeProviderFetch } from '@/lib/providers/destination-policy';
+import {
+  getProviderTestPrompt,
+  truncateProviderTestResponse,
+} from '@/lib/providers/provider-test-policy';
+import {
+  buildAnthropicTestBody,
+  buildGoogleTestBody,
+  buildOllamaTestBody,
+  buildOpenAIChatTestBody,
+  buildOpenAICompletionTestBody,
+  buildOpenAIResponsesTestBody,
+} from '@/lib/providers/provider-test-request';
 
 type ProviderRecord = {
   type: string;
@@ -13,7 +25,7 @@ type ProviderRecord = {
 type TestPayload = {
   providerId?: string;
   modelId?: string;
-  prompt?: string;
+  promptId?: string;
 };
 
 type JsonRecord = Record<string, unknown>;
@@ -251,11 +263,7 @@ async function runOpenAIStyleTest({
       'Content-Type': 'application/json',
       Authorization: `Bearer ${apiKey}`,
     },
-    body: JSON.stringify({
-      model: modelId,
-      messages: [{ role: 'user', content: prompt }],
-      temperature: 0.7,
-    }),
+    body: JSON.stringify(buildOpenAIChatTestBody(modelId, prompt)),
   });
 
   if (response.status === 200 || response.status === 201) {
@@ -296,11 +304,7 @@ async function runOpenAIResponsesTest({
       'Content-Type': 'application/json',
       Authorization: `Bearer ${apiKey}`,
     },
-    body: JSON.stringify({
-      model: modelId,
-      input: prompt,
-      temperature: 0.7,
-    }),
+    body: JSON.stringify(buildOpenAIResponsesTestBody(modelId, prompt)),
   });
 
   if (response.status === 200 || response.status === 201) {
@@ -343,12 +347,7 @@ async function runOpenAICompletionFallback({
       'Content-Type': 'application/json',
       Authorization: `Bearer ${apiKey}`,
     },
-    body: JSON.stringify({
-      model: modelId,
-      prompt,
-      max_tokens: 256,
-      temperature: 0.7,
-    }),
+    body: JSON.stringify(buildOpenAICompletionTestBody(modelId, prompt)),
   });
 
   if (response.status === 200 || response.status === 201) {
@@ -385,11 +384,7 @@ async function runAnthropicStyleTest({
       'x-api-key': apiKey,
       'anthropic-version': '2023-06-01',
     },
-    body: JSON.stringify({
-      model: modelId,
-      max_tokens: 256,
-      messages: [{ role: 'user', content: prompt }],
-    }),
+    body: JSON.stringify(buildAnthropicTestBody(modelId, prompt)),
   });
 
   if (response.status === 200 || response.status === 201) {
@@ -427,18 +422,7 @@ async function runGoogleTest({
     headers: {
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
-      contents: [
-        {
-          role: 'user',
-          parts: [{ text: prompt }],
-        },
-      ],
-      generationConfig: {
-        maxOutputTokens: 256,
-        temperature: 0.7,
-      },
-    }),
+    body: JSON.stringify(buildGoogleTestBody(prompt)),
   });
 
   if (response.status === 200 || response.status === 201) {
@@ -476,11 +460,7 @@ async function runOllamaTest({
     headers: {
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
-      model: modelId,
-      messages: [{ role: 'user', content: prompt }],
-      stream: false,
-    }),
+    body: JSON.stringify(buildOllamaTestBody(modelId, prompt)),
   });
 
   if (response.status === 200 || response.status === 201) {
@@ -508,11 +488,19 @@ export async function POST(req: Request) {
 
   try {
     requestBody = (await req.json()) as TestPayload;
-    const { providerId, modelId, prompt } = requestBody;
+    const { providerId, modelId, promptId } = requestBody;
 
-    if (!providerId || !modelId || !prompt) {
+    if (!providerId || !modelId || !promptId) {
       return NextResponse.json(
-        { error: 'Missing providerId, modelId, or prompt' },
+        { error: 'Missing providerId, modelId, or promptId' },
+        { status: 400 }
+      );
+    }
+
+    const prompt = getProviderTestPrompt(promptId);
+    if (!prompt) {
+      return NextResponse.json(
+        { error: 'Invalid provider test prompt preset' },
         { status: 400 }
       );
     }
@@ -544,7 +532,7 @@ export async function POST(req: Request) {
             baseUrl: normalizedUrl,
             apiKey: providerRecord.apiKey,
             modelId,
-            prompt: prompt.trim(),
+            prompt,
           });
         } catch (chatErr) {
           const chatMessage = (chatErr as Error).message || '';
@@ -558,7 +546,7 @@ export async function POST(req: Request) {
               baseUrl: normalizedUrl,
               apiKey: providerRecord.apiKey,
               modelId,
-              prompt: prompt.trim(),
+              prompt,
             });
           } else {
             throw chatErr;
@@ -570,7 +558,7 @@ export async function POST(req: Request) {
             baseUrl: normalizedUrl,
             apiKey: providerRecord.apiKey,
             modelId,
-            prompt: prompt.trim(),
+            prompt,
           });
         } catch (err) {
           const message = (err as Error).message || '';
@@ -585,7 +573,7 @@ export async function POST(req: Request) {
                 baseUrl: normalizedUrl,
                 apiKey: providerRecord.apiKey,
                 modelId,
-                prompt: prompt.trim(),
+                prompt,
               });
             } catch (chatErr) {
               const chatMessage = (chatErr as Error).message || '';
@@ -599,7 +587,7 @@ export async function POST(req: Request) {
                   baseUrl: normalizedUrl,
                   apiKey: providerRecord.apiKey,
                   modelId,
-                  prompt: prompt.trim(),
+                  prompt,
                 });
               } else {
                 throw chatErr;
@@ -615,19 +603,19 @@ export async function POST(req: Request) {
         baseUrl: normalizedUrl,
         apiKey: providerRecord.apiKey,
         modelId,
-        prompt: prompt.trim(),
+        prompt,
       });
     } else if (providerRecord.type === 'google') {
       responseText = await runGoogleTest({
         apiKey: providerRecord.apiKey,
         modelId,
-        prompt: prompt.trim(),
+        prompt,
       });
     } else if (providerRecord.type === 'ollama') {
       responseText = await runOllamaTest({
         baseUrl: normalizedUrl,
         modelId,
-        prompt: prompt.trim(),
+        prompt,
       });
     } else {
       return NextResponse.json(
@@ -636,7 +624,9 @@ export async function POST(req: Request) {
       );
     }
 
-    return NextResponse.json({ response: responseText });
+    return NextResponse.json({
+      response: truncateProviderTestResponse(responseText),
+    });
   } catch (error) {
     const errorVal = error as Error;
     console.error('Failed to run model test:', errorVal);

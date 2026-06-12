@@ -148,6 +148,181 @@
   border-radius: 4px;
 }
 
+.providerTestSection {
+  border-top: 1px solid var(--border-color);
+  margin-top: 32px;
+  padding-top: 28px;
+}
+
+.providerTestHeading {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.providerTestHeading h2 {
+  color: var(--text-primary);
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.providerTestDescription {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  margin-bottom: 16px;
+}
+
+.providerTestEmpty {
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  color: var(--text-tertiary);
+  padding: 18px;
+  text-align: center;
+}
+
+.providerTestPanel {
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 16px;
+}
+
+.providerTestPanel form {
+  width: 100%;
+}
+
+.providerTestSelectors {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.providerTestSelectors > div {
+  margin-bottom: 12px;
+}
+
+.providerTestActions {
+  align-items: flex-end;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+}
+
+.promptPresetFieldset {
+  border: 0;
+  margin: 0;
+  min-width: 0;
+  padding: 0;
+}
+
+.promptPresetList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.promptPresetChip {
+  background-color: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 500;
+  line-height: 1;
+  padding: 7px 11px;
+  transition: background-color 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.promptPresetChip:hover {
+  border-color: var(--text-tertiary);
+  color: var(--text-primary);
+}
+
+.promptPresetChip:focus-within {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.25);
+}
+
+.promptPresetChipSelected {
+  background-color: var(--accent-bg-glow);
+  border-color: var(--accent-primary);
+  color: var(--text-primary);
+}
+
+.promptPresetChip:has(input:disabled) {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.visuallyHidden {
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  padding: 0;
+  position: absolute;
+  width: 1px;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.providerTestResult {
+  background-color: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  margin-top: 12px;
+  outline: none;
+  padding: 12px 14px;
+  scroll-margin: 16px;
+}
+
+.providerTestResult:focus-visible {
+  border-color: var(--accent-primary);
+}
+
+.providerTestResultError {
+  border-color: var(--danger);
+}
+
+.providerTestResultLabel {
+  align-items: center;
+  color: var(--accent-primary);
+  display: flex;
+  font-size: 0.78rem;
+  font-weight: 600;
+  gap: 4px;
+  margin-bottom: 5px;
+}
+
+.providerTestResultError .providerTestResultLabel {
+  color: var(--danger);
+}
+
+.providerTestResult p {
+  color: var(--text-primary);
+  font-size: 0.9rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+@media (max-width: 720px) {
+  .providerTestSelectors {
+    grid-template-columns: 1fr;
+  }
+
+  .providerTestActions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .providerTestActions > button {
+    align-self: flex-end;
+  }
+}
+
 .cardActions {
   display: flex;
   justify-content: flex-end;
@@ -352,4 +527,3 @@
   color: var(--text-tertiary);
   font-style: italic;
 }
-
