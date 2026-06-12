@@ -278,6 +278,7 @@ export async function runOrchestrationLoop(sessionId: string): Promise<void> {
           stream = await agent.stream(promptInput, {
             context: mastraMessages as any,
             system: context.systemContext, // Override instructions with compiled context
+            maxSteps: 5,
           });
         } catch (err: any) {
           const errMsg = err.message || String(err);
@@ -299,6 +300,7 @@ export async function runOrchestrationLoop(sessionId: string): Promise<void> {
             });
             stream = await agent.stream(fallbackPrompt, {
               context: fallbackMessages as any,
+              maxSteps: 5,
             });
           } else {
             throw err;

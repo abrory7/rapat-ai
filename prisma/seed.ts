@@ -313,7 +313,7 @@ async function main() {
       name: 'Software Feature Planning',
       description: 'Collaborative development cycle involving PM, Architect, Engineer, and QA-Sec to draft a concrete software specification.',
       defaultFlow: JSON.stringify(['pm', 'architect', 'engineer', 'qa-sec']),
-      maxRounds: 2,
+      maxRounds: 5,
       rules: `### Discussion Rules
 - PM initiates the scope and delegates to @architect.
 - Architect drafts the tech design, then delegates to @engineer.

@@ -90,7 +90,23 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   let parsedTools: any[] = [];
   if (toolCalls) {
     try {
-      parsedTools = JSON.parse(toolCalls);
+      const raw = JSON.parse(toolCalls);
+      if (Array.isArray(raw)) {
+        parsedTools = raw.map((tc: any) => {
+          if (tc && tc.payload) {
+            return {
+              name: tc.payload.toolName || tc.payload.name || tc.toolName || tc.name,
+              args: tc.payload.args || tc.payload.arguments || tc.args || tc.arguments,
+              result: tc.payload.result || tc.result,
+            };
+          }
+          return {
+            name: tc.name || tc.toolName,
+            args: tc.args || tc.arguments,
+            result: tc.result,
+          };
+        });
+      }
     } catch {
       parsedTools = [];
     }
@@ -137,8 +153,8 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
           {parsedTools.map((tc, idx) => (
             <ToolCallIndicator
               key={idx}
-              name={tc.name || tc.toolName}
-              args={tc.args || tc.arguments}
+              name={tc.name}
+              args={tc.args}
               result={tc.result}
               status="completed"
             />

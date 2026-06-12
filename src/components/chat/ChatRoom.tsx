@@ -135,6 +135,7 @@ export const ChatRoom: React.FC<ChatRoomProps> = ({ sessionId }) => {
             console.error('Orchestration discussion error:', data.error);
             setStatus('ERROR');
             setSession((prev) => prev ? { ...prev, status: 'ERROR' } : null);
+            fetchSessionDetails();
           }
         } catch (e) {
           console.error('Error parsing SSE event:', e);
@@ -145,6 +146,7 @@ export const ChatRoom: React.FC<ChatRoomProps> = ({ sessionId }) => {
         console.error('SSE connection error:', e);
         eventSource.close();
         eventSourceRef.current = null;
+        fetchSessionDetails();
       };
     } else {
       // Disconnect if status is neither RUNNING nor COMPILING

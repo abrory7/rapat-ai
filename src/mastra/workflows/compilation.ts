@@ -138,7 +138,7 @@ ${roleGuidance}
   })();
 
   const timeoutPromise = new Promise<string>((_, reject) => {
-    setTimeout(() => reject(new Error('Compilation timed out after 45 seconds')), 45000);
+    setTimeout(() => reject(new Error('Compilation timed out after 90 seconds')), 90000);
   });
 
   const planningDoc = await Promise.race([streamPromise, timeoutPromise]);
