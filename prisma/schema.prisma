@@ -1,0 +1,135 @@
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Project {
+  id          String             @id @default(uuid())
+  name        String
+  description String?
+  repoPath    String
+  ignoreRules String?
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+  sessions    Session[]
+  mcpServers  McpServerConfig[]
+}
+
+model McpServerConfig {
+  id          String   @id @default(uuid())
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  name        String
+  type        String   // "stdio" or "sse"
+  command     String?
+  url         String?
+  args        String?  // JSON stringified array of arguments
+  env         String?  // JSON stringified object of env vars
+  enabled     Boolean  @default(true)
+}
+
+model Provider {
+  id        String   @id @default(uuid())
+  name      String
+  type      String   // "openai", "anthropic", "google", "ollama" etc.
+  baseUrl   String?
+  apiKey    String   // Encrypted
+  models    String   // JSON stringified array of model names
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  roles     Role[]
+}
+
+model Role {
+  id            String         @id @default(uuid())
+  name          String
+  slug          String         @unique // e.g. "PM", "ARCHITECT"
+  systemPrompt  String
+  modelId       String?
+  providerId    String?
+  provider      Provider?      @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  color         String         // e.g. "#6366f1"
+  icon          String         // e.g. emoji or icon identifier
+  isBuiltIn     Boolean        @default(false)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  skills        RoleSkill[]
+  templateRoles TemplateRole[]
+}
+
+model Skill {
+  id          String      @id @default(uuid())
+  name        String
+  description String?
+  content     String      // Markdown template guidelines
+  isBuiltIn   Boolean     @default(false)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  roles       RoleSkill[]
+}
+
+model RoleSkill {
+  roleId  String
+  skillId String
+  role    Role   @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  skill   Skill  @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, skillId])
+}
+
+model DiscussionTemplate {
+  id            String         @id @default(uuid())
+  name          String
+  description   String?
+  defaultFlow   String         // JSON array of slugs
+  maxRounds     Int            @default(5)
+  rules         String?        // Markdown list of instructions/restrictions
+  isBuiltIn     Boolean        @default(false)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  templateRoles TemplateRole[]
+  sessions      Session[]
+}
+
+model TemplateRole {
+  templateId String
+  roleId     String
+  order      Int
+  template   DiscussionTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  role       Role               @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([templateId, roleId])
+}
+
+model Session {
+  id               String             @id @default(uuid())
+  projectId        String
+  project          Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  topic            String
+  templateId       String
+  template         DiscussionTemplate @relation(fields: [templateId], references: [id])
+  status           String             // "IDLE", "RUNNING", "COMPILING", "COMPLETED", "ERROR", "PAUSED"
+  currentRoleSlug  String?
+  currentRound     Int                @default(1)
+  planningDocument String?            // Markdown text of compiled output
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  messages         Message[]
+}
+
+model Message {
+  id          String   @id @default(uuid())
+  sessionId   String
+  session     Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  roleId      String?
+  sender      String   // Role Name, "USER", or "SYSTEM"
+  content     String
+  toolCalls   String?  // JSON string representing tools used
+  delegateTo  String?  // e.g. "@ARCHITECT"
+  metadata    String?  // JSON string of tokens, duration, etc.
+  createdAt   DateTime @default(now())
+}
