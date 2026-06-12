@@ -104,17 +104,16 @@ export const writeOutputTool = createTool({
         fs.mkdirSync(resolvedOutputDir.absolutePath, { recursive: true });
       }
       
-      // Resolve targetFilePath through path-policy
-      const targetFilePath = resolveWorkspacePath(project.repoPath, path.join('.rapat-ai/outputs', baseName), { mustExist: false });
+      const finalOutputPath = path.join(resolvedOutputDir.absolutePath, baseName);
       
       // Write with O_NOFOLLOW to reject writing to symlinks (preventing dangling symlink exploitation)
-      fs.writeFileSync(targetFilePath.absolutePath, content, {
+      fs.writeFileSync(finalOutputPath, content, {
         flag: (fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_TRUNC | fs.constants.O_NOFOLLOW) as unknown as string
       });
       
       return {
         success: true,
-        filePath: targetFilePath.relativePath,
+        filePath: path.posix.join('.rapat-ai/outputs', baseName),
       };
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);

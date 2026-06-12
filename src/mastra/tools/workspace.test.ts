@@ -6,6 +6,10 @@ import os from 'node:os';
 import { prisma } from '../../lib/db';
 import { writeOutputTool } from './workspace';
 
+type ExecParams = Parameters<NonNullable<typeof writeOutputTool.execute>>;
+type ContextType = ExecParams[1];
+const mockCtx = {} as ContextType;
+
 describe('writeOutputTool', () => {
   let tempDir: string;
   let projectRepo: string;
@@ -74,7 +78,7 @@ describe('writeOutputTool', () => {
         fileName: 'safe_output.md',
         content: 'hello world',
       },
-      {} as any
+      mockCtx
     ) as { success: boolean; filePath?: string; error?: string };
 
     assert.equal(result.success, true);
@@ -95,7 +99,7 @@ describe('writeOutputTool', () => {
         fileName: '../escaped.md',
         content: 'hack',
       },
-      {} as any
+      mockCtx
     ) as { success: boolean; error?: string };
     assert.equal(result1.success, false);
 
@@ -106,7 +110,7 @@ describe('writeOutputTool', () => {
         fileName: '',
         content: 'hack',
       },
-      {} as any
+      mockCtx
     ) as { success: boolean; error?: string };
     assert.equal(result2.success, false);
 
@@ -117,12 +121,16 @@ describe('writeOutputTool', () => {
         fileName: '.',
         content: 'hack',
       },
-      {} as any
+      mockCtx
     ) as { success: boolean; error?: string };
     assert.equal(result3.success, false);
   });
 
-  it('rejects a symlink resolving outside the workspace (resolver check)', async () => {
+  it('rejects writing to symlinks via O_NOFOLLOW (prevents dangling symlink exploits)', async (t) => {
+    if (!symlinksSupported) {
+      t.skip('Symlinks not supported by host OS');
+      return;
+    }
     assert.ok(writeOutputTool.execute);
 
     const result = await writeOutputTool.execute(
@@ -131,30 +139,16 @@ describe('writeOutputTool', () => {
         fileName: 'linked-file.md',
         content: 'malicious write',
       },
-      {} as any
+      mockCtx
     ) as { success: boolean; error?: string };
 
-    // The resolver resolves linked-file.md -> outside.txt which is outside repoPath, so it throws Access Denied
+    // Since we pass the unresolved symlink path to writeFileSync with O_NOFOLLOW,
+    // the OS immediately rejects it with ELOOP, regardless of where it points.
     assert.equal(result.success, false);
-    assert.match(result.error || '', /Access Denied/i);
+    assert.match(result.error || '', /ELOOP|Access Denied/i);
 
     // Verify the outside file was NOT modified
     const outsideContent = fs.readFileSync(path.join(tempDir, 'outside.txt'), 'utf8');
     assert.equal(outsideContent, 'outside secret');
-  });
-
-  it('proves O_NOFOLLOW flag prevents writing to a symlink directly', (t) => {
-    if (!symlinksSupported) {
-      t.skip('Symlinks not supported by host OS');
-      return;
-    }
-    const symlinkPath = path.join(projectRepo, '.rapat-ai', 'outputs', 'linked-file.md');
-
-    // Writing with O_NOFOLLOW should throw ELOOP
-    assert.throws(() => {
-      fs.writeFileSync(symlinkPath, 'test', {
-        flag: (fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_TRUNC | fs.constants.O_NOFOLLOW) as unknown as string
-      });
-    }, /ELOOP/);
   });
 });
