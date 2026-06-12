@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { isIgnored } from './ignore-filter';
+import { resolveWorkspacePath } from './path-policy';
 
 export interface FileEntry {
   name: string;
@@ -18,24 +19,20 @@ export function listFiles(
   relativePath: string = '',
   ignoreRules: string[] = []
 ): FileEntry[] {
-  const targetDir = path.join(rootPath, relativePath);
+  const resolved = resolveWorkspacePath(rootPath, relativePath, { mustExist: true });
 
-  if (!fs.existsSync(targetDir)) {
-    throw new Error(`Directory does not exist: ${relativePath}`);
-  }
-
-  const stat = fs.statSync(targetDir);
+  const stat = fs.statSync(resolved.absolutePath);
   if (!stat.isDirectory()) {
     throw new Error(`Path is not a directory: ${relativePath}`);
   }
 
-  const items = fs.readdirSync(targetDir);
+  const items = fs.readdirSync(resolved.absolutePath);
   const result: FileEntry[] = [];
 
   for (const item of items) {
     // Ensure relative path is clean and normalized
-    const cleanRelativePath = relativePath
-      ? path.join(relativePath, item).replace(/\\/g, '/')
+    const cleanRelativePath = resolved.relativePath
+      ? path.join(resolved.relativePath, item).replace(/\\/g, '/')
       : item;
 
     if (isIgnored(cleanRelativePath, ignoreRules)) {
@@ -43,15 +40,15 @@ export function listFiles(
     }
 
     try {
-      const itemFullPath = path.join(rootPath, cleanRelativePath);
-      const itemStat = fs.statSync(itemFullPath);
+      const resolvedItem = resolveWorkspacePath(rootPath, cleanRelativePath, { mustExist: true });
+      const itemStat = fs.statSync(resolvedItem.absolutePath);
       const isDir = itemStat.isDirectory();
 
       let childrenCount = 0;
       if (isDir) {
         try {
-          childrenCount = fs.readdirSync(itemFullPath).filter((child) => {
-            const childRelative = path.join(cleanRelativePath, child).replace(/\\/g, '/');
+          childrenCount = fs.readdirSync(resolvedItem.absolutePath).filter((child) => {
+            const childRelative = path.join(resolvedItem.relativePath, child).replace(/\\/g, '/');
             return !isIgnored(childRelative, ignoreRules);
           }).length;
         } catch {
@@ -61,7 +58,7 @@ export function listFiles(
 
       result.push({
         name: item,
-        path: cleanRelativePath,
+        path: resolvedItem.relativePath,
         type: isDir ? 'dir' : 'file',
         size: isDir ? 0 : itemStat.size,
         childrenCount: isDir ? childrenCount : undefined,

@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { isIgnored } from './ignore-filter';
+import { resolveWorkspacePath } from './path-policy';
 
 const MAX_FILE_SIZE_BYTES = 100 * 1024; // 100 KB limit
 
@@ -12,21 +13,13 @@ export function readFile(
   filePath: string,
   ignoreRules: string[] = []
 ): string {
-  const safeRelativePath = path
-    .normalize(filePath)
-    .replace(/^(\.\.(\/|\\))+/, '')
-    .replace(/\\/g, '/');
+  const resolved = resolveWorkspacePath(rootPath, filePath, { mustExist: true });
 
-  if (isIgnored(safeRelativePath, ignoreRules)) {
-    throw new Error(`Access Denied: File is ignored or restricted: ${safeRelativePath}`);
+  if (isIgnored(resolved.relativePath, ignoreRules)) {
+    throw new Error(`Access Denied: File is ignored or restricted: ${resolved.relativePath}`);
   }
 
-  const fullPath = path.join(rootPath, safeRelativePath);
-  if (!fs.existsSync(fullPath)) {
-    throw new Error(`File not found: ${filePath}`);
-  }
-
-  const stat = fs.statSync(fullPath);
+  const stat = fs.statSync(resolved.absolutePath);
   if (stat.isDirectory()) {
     throw new Error(`Path is a directory, not a file: ${filePath}`);
   }
@@ -37,5 +30,5 @@ export function readFile(
     );
   }
 
-  return fs.readFileSync(fullPath, 'utf8');
+  return fs.readFileSync(resolved.absolutePath, 'utf8');
 }

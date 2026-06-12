@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { isIgnored } from './ignore-filter';
+import { resolveWorkspacePath } from './path-policy';
 
 export interface SearchMatch {
   file: string;
@@ -42,24 +43,47 @@ export function searchCode(
   const lowercaseQuery = query.toLowerCase();
   const results: SearchMatch[] = [];
 
+  const resolvedRoot = resolveWorkspacePath(rootPath, '');
+  const visitedDirs = new Set<string>();
+
   function traverse(dirPath: string) {
     if (results.length >= MAX_SEARCH_RESULTS) return;
 
+    let resolvedDir;
     try {
-      const files = fs.readdirSync(dirPath);
-      for (const file of files) {
-        if (results.length >= MAX_SEARCH_RESULTS) return;
+      resolvedDir = resolveWorkspacePath(rootPath, path.relative(resolvedRoot.absolutePath, dirPath));
+    } catch {
+      return;
+    }
 
-        const fullPath = path.join(dirPath, file);
-        const relativePath = path.relative(rootPath, fullPath).replace(/\\/g, '/');
+    const dirRealPath = resolvedDir.absolutePath;
+    if (visitedDirs.has(dirRealPath)) {
+      return;
+    }
+    visitedDirs.add(dirRealPath);
+
+    let files;
+    try {
+      files = fs.readdirSync(resolvedDir.absolutePath);
+    } catch {
+      return;
+    }
+
+    for (const file of files) {
+      if (results.length >= MAX_SEARCH_RESULTS) return;
+
+      try {
+        const fullPath = path.join(resolvedDir.absolutePath, file);
+        const relativePath = path.relative(resolvedRoot.absolutePath, fullPath).replace(/\\/g, '/');
 
         if (isIgnored(relativePath, ignoreRules)) {
           continue;
         }
 
-        const stat = fs.statSync(fullPath);
+        const resolvedFile = resolveWorkspacePath(rootPath, relativePath, { mustExist: true });
+        const stat = fs.statSync(resolvedFile.absolutePath);
         if (stat.isDirectory()) {
-          traverse(fullPath);
+          traverse(resolvedFile.absolutePath);
         } else if (stat.isFile()) {
           const ext = path.extname(file).toLowerCase();
           // Skip binaries and files over 200KB for search
@@ -67,13 +91,13 @@ export function searchCode(
             continue;
           }
 
-          const content = fs.readFileSync(fullPath, 'utf8');
+          const content = fs.readFileSync(resolvedFile.absolutePath, 'utf8');
           if (content.toLowerCase().includes(lowercaseQuery)) {
             const lines = content.split('\n');
             for (let i = 0; i < lines.length; i++) {
               if (lines[i].toLowerCase().includes(lowercaseQuery)) {
                 results.push({
-                  file: relativePath,
+                  file: resolvedFile.relativePath,
                   lineNumber: i + 1,
                   lineContent: lines[i].trim(),
                 });
@@ -82,12 +106,12 @@ export function searchCode(
             }
           }
         }
+      } catch {
+        continue;
       }
-    } catch {
-      return;
     }
   }
 
-  traverse(rootPath);
+  traverse(resolvedRoot.absolutePath);
   return results;
 }

@@ -5,6 +5,7 @@ import { listFiles } from '@/lib/workspace/file-lister';
 import { readFile } from '@/lib/workspace/file-reader';
 import { searchCode } from '@/lib/workspace/code-searcher';
 import { parseIgnoreRules } from '@/lib/workspace/ignore-filter';
+import { resolveWorkspacePath } from '@/lib/workspace/path-policy';
 import fs from 'fs';
 import path from 'path';
 
@@ -90,21 +91,30 @@ export const writeOutputTool = createTool({
   execute: async ({ projectId, fileName, content }) => {
     try {
       const project = await getProject(projectId);
-      const outputDir = path.join(project.repoPath, '.rapat-ai', 'outputs');
       
-      if (!fs.existsSync(outputDir)) {
-        fs.mkdirSync(outputDir, { recursive: true });
+      const baseName = path.basename(fileName);
+      if (!fileName || fileName !== baseName || baseName === '.' || baseName === '..') {
+        throw new Error('Access Denied');
+      }
+
+      // Resolve outputDir through path-policy (mustExist: false)
+      const resolvedOutputDir = resolveWorkspacePath(project.repoPath, '.rapat-ai/outputs', { mustExist: false });
+      
+      if (!fs.existsSync(resolvedOutputDir.absolutePath)) {
+        fs.mkdirSync(resolvedOutputDir.absolutePath, { recursive: true });
       }
       
-      // Ensure file name has no directory traversal
-      const safeFileName = path.basename(fileName);
-      const targetFilePath = path.join(outputDir, safeFileName);
+      // Resolve targetFilePath through path-policy
+      const targetFilePath = resolveWorkspacePath(project.repoPath, path.join('.rapat-ai/outputs', baseName), { mustExist: false });
       
-      fs.writeFileSync(targetFilePath, content, 'utf8');
+      // Write with O_NOFOLLOW to reject writing to symlinks (preventing dangling symlink exploitation)
+      fs.writeFileSync(targetFilePath.absolutePath, content, {
+        flag: fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_TRUNC | fs.constants.O_NOFOLLOW
+      });
       
       return {
         success: true,
-        filePath: path.join('.rapat-ai', 'outputs', safeFileName).replace(/\\/g, '/'),
+        filePath: targetFilePath.relativePath,
       };
     } catch (err: any) {
       console.error(err);
