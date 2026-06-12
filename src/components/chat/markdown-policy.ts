@@ -1,3 +1,4 @@
+import React from 'react';
 import { defaultSchema } from 'rehype-sanitize';
 
 const allowedClasses = [
@@ -42,4 +43,13 @@ export const markdownSanitizeSchema = {
     ...defaultSchema.protocols,
     href: ['http', 'https', 'mailto']
   }
+};
+
+export const renderLink = ({ node: _node, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { node?: unknown }) => {
+  const href = props.href || '';
+  const isExternal = href.startsWith('http://') || href.startsWith('https://') || href.startsWith('//');
+  if (isExternal) {
+    return React.createElement('a', { ...props, target: '_blank', rel: 'noopener noreferrer' });
+  }
+  return React.createElement('a', props);
 };

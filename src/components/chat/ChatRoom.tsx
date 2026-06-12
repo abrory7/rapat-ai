@@ -6,21 +6,12 @@ import { MessageSquare, AlertTriangle, ClipboardList, Play, Pause, Square, Rotat
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeSanitize from 'rehype-sanitize';
-import { markdownSanitizeSchema } from './markdown-policy';
+import { markdownSanitizeSchema, renderLink } from './markdown-policy';
 import Button from '../ui/Button';
 import MessageBubble from './MessageBubble';
 import StreamingMessage from './StreamingMessage';
 import styles from './ChatRoom.module.css';
 import bubbleStyles from './MessageBubble.module.css';
-
-const renderLink = ({ node, ...props }: any) => {
-  const href = props.href || '';
-  const isExternal = href.startsWith('http://') || href.startsWith('https://');
-  if (isExternal) {
-    return <a {...props} target="_blank" rel="noopener noreferrer" />;
-  }
-  return <a {...props} />;
-};
 
 interface Role {
   name: string;
@@ -444,7 +435,7 @@ export const ChatRoom: React.FC<ChatRoomProps> = ({ sessionId }) => {
 
             <div className={styles.documentContent}>
               {session.planningDocument ? (
-                <ReactMarkdown 
+                <ReactMarkdown
                   remarkPlugins={[remarkGfm]}
                   rehypePlugins={[[rehypeSanitize, markdownSanitizeSchema]]}
                   components={{ a: renderLink }}

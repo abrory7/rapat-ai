@@ -6,19 +6,10 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeRaw from 'rehype-raw';
 import rehypeSanitize from 'rehype-sanitize';
-import { markdownSanitizeSchema } from './markdown-policy';
+import { markdownSanitizeSchema, renderLink } from './markdown-policy';
 
 test('Markdown Policy Sanity Tests', async (t) => {
-  const components = {
-    a: ({ node, ...props }: any) => {
-      const href = props.href || '';
-      const isExternal = href.startsWith('http://') || href.startsWith('https://');
-      if (isExternal) {
-        return React.createElement('a', { ...props, target: '_blank', rel: 'noopener noreferrer' });
-      }
-      return React.createElement('a', props);
-    }
-  };
+  const components = { a: renderLink };
 
   const render = (md: string) => renderToString(
     React.createElement(ReactMarkdown, {
@@ -65,8 +56,12 @@ test('Markdown Policy Sanity Tests', async (t) => {
     assert.ok(output1.includes('target="_blank"'));
     assert.ok(output1.includes('rel="noopener noreferrer"'));
 
-    const output2 = render('[Internal](/about)');
-    assert.ok(!output2.includes('target="_blank"'));
-    assert.ok(!output2.includes('rel="noopener noreferrer"'));
+    const output2 = render('[Protocol Relative](//example.com)');
+    assert.ok(output2.includes('target="_blank"'));
+    assert.ok(output2.includes('rel="noopener noreferrer"'));
+
+    const output3 = render('[Internal](/about)');
+    assert.ok(!output3.includes('target="_blank"'));
+    assert.ok(!output3.includes('rel="noopener noreferrer"'));
   });
 });
