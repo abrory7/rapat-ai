@@ -45,11 +45,13 @@ export const markdownSanitizeSchema = {
   }
 };
 
-export const renderLink = ({ node: _node, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { node?: unknown }) => {
-  const href = props.href || '';
+export const renderLink = (props: React.AnchorHTMLAttributes<HTMLAnchorElement> & { node?: unknown }) => {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { node, ...anchorProps } = props;
+  const href = anchorProps.href || '';
   const isExternal = href.startsWith('http://') || href.startsWith('https://') || href.startsWith('//');
   if (isExternal) {
-    return React.createElement('a', { ...props, target: '_blank', rel: 'noopener noreferrer' });
+    return React.createElement('a', { ...anchorProps, target: '_blank', rel: 'noopener noreferrer' });
   }
-  return React.createElement('a', props);
+  return React.createElement('a', anchorProps);
 };
