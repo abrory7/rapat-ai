@@ -19,7 +19,8 @@ interface McpServer {
   command?: string;
   url?: string;
   args?: string[];
-  env?: Record<string, string>;
+  env?: Record<string, string | { hasValue: boolean }>;
+  removedEnvKeys?: string[];
   enabled: boolean;
 }
 

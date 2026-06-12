@@ -96,5 +96,22 @@ Once the application is running, follow this simple workflow to start an agentic
 ## 🔒 Security & Data Privacy
 
 *   **API Key Encryption:** Your provider API keys are encrypted at rest using AES-256-GCM. The encryption key is randomly generated on the first run and stored in the local file `[root]/.secret`.
+
+## Local Security Model
+
+Rapat AI is intended to run on the same computer as the browser. The default
+`dev` and `start` commands listen only on `127.0.0.1`; do not override this with
+`0.0.0.0`, a public tunnel, port forwarding, or an internet-facing reverse
+proxy.
+
+Provider API keys and MCP environment values are write-only. Saved values are
+encrypted in SQLite and are never returned to the browser. Custom provider
+URLs may use HTTP only on loopback; public custom providers must use HTTPS.
+Private LAN and cloud metadata destinations are rejected.
+
+Treat `.secret` and the SQLite database as one backup unit. Restoring the
+database without its matching `.secret` file makes encrypted credentials
+unrecoverable. Keep `.secret`, `.env`, and database files readable only by your
+OS user (`chmod 600 .secret .env prisma/dev.db` on Unix-like systems).
 *   **Workspace Protection:** Secure workspace tools automatically respect your project's [.gitignore](file:///Users/abrory7/Kantor/Web/rapat-ai/.gitignore) file. AI agents cannot read, search, or expose your private `.env` files or git histories.
 *   **Database Isolation:** All configurations, projects, and discussions are kept locally inside your private `prisma/dev.db` database.

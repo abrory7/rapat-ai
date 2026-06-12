@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
+import { toProviderSummary } from '@/lib/providers/provider-dto';
 
 export async function GET() {
   try {
@@ -14,7 +15,12 @@ export async function GET() {
       },
       orderBy: { name: 'asc' },
     });
-    return NextResponse.json(roles);
+    return NextResponse.json(
+      roles.map((role) => ({
+        ...role,
+        provider: role.provider ? toProviderSummary(role.provider) : null,
+      }))
+    );
   } catch (error) {
     console.error('Failed to fetch roles:', error);
     return NextResponse.json({ error: 'Failed to fetch roles' }, { status: 500 });

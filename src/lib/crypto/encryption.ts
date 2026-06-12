@@ -21,9 +21,10 @@ function loadOrCreateSecret(): Buffer {
   let hexSecret: string;
   if (fs.existsSync(SECRET_FILE_PATH)) {
     hexSecret = fs.readFileSync(SECRET_FILE_PATH, 'utf8').trim();
-    if (hexSecret.length !== 64) {
-      // Regenerate if corrupt or invalid length
-      hexSecret = generateSecret();
+    if (!/^[a-f0-9]{64}$/i.test(hexSecret)) {
+      throw new Error(
+        'The .secret file is invalid. Restore the matching 64-character hex secret; it was not regenerated.'
+      );
     }
   } else {
     hexSecret = generateSecret();
@@ -46,9 +47,9 @@ export function encrypt(plaintext: string): string {
     
     const authTag = cipher.getAuthTag().toString('hex');
     
-    return `${iv.toString('hex')}:${encrypted}:${authTag}`;
-  } catch (error) {
-    console.error('Encryption failed:', error);
+    return `v1:${iv.toString('hex')}:${encrypted}:${authTag}`;
+  } catch {
+    console.error('Encryption failed.');
     throw new Error('Encryption failed');
   }
 }
@@ -60,11 +61,20 @@ export function decrypt(ciphertext: string): string {
   try {
     const key = loadOrCreateSecret();
     const parts = ciphertext.split(':');
-    if (parts.length !== 3) {
+    const versioned = parts[0] === 'v1';
+    const payload = versioned ? parts.slice(1) : parts;
+    if (payload.length !== 3) {
       throw new Error('Invalid ciphertext format');
     }
     
-    const [ivHex, encryptedHex, authTagHex] = parts;
+    const [ivHex, encryptedHex, authTagHex] = payload;
+    if (
+      !/^[a-f0-9]{24}$/i.test(ivHex) ||
+      !/^[a-f0-9]*$/i.test(encryptedHex) ||
+      !/^[a-f0-9]{32}$/i.test(authTagHex)
+    ) {
+      throw new Error('Invalid ciphertext encoding');
+    }
     const iv = Buffer.from(ivHex, 'hex');
     const authTag = Buffer.from(authTagHex, 'hex');
     
@@ -75,8 +85,7 @@ export function decrypt(ciphertext: string): string {
     decrypted += decipher.final('utf8');
     
     return decrypted;
-  } catch (error) {
-    console.error('Decryption failed:', error);
+  } catch {
     throw new Error('Decryption failed');
   }
 }

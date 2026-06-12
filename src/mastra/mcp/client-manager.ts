@@ -1,6 +1,7 @@
 import { MCPClient } from '@mastra/mcp';
 import { prisma } from '@/lib/db';
 import { allTools } from '../tools';
+import { decodeEnvironment } from '@/lib/mcp/environment-secrets';
 
 // Cache client managers per project to reuse connections
 const mcpClientCache = new Map<string, MCPClient>();
@@ -31,12 +32,7 @@ export async function getMcpClientForProject(projectId: string): Promise<MCPClie
         parsedArgs = [];
       }
 
-      let parsedEnv: Record<string, string> = {};
-      try {
-        parsedEnv = config.env ? JSON.parse(config.env) : {};
-      } catch {
-        parsedEnv = {};
-      }
+      const parsedEnv = decodeEnvironment(config.env);
 
       servers[config.name] = {
         command: config.command,

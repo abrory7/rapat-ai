@@ -4,9 +4,10 @@
   "private": true,
   "scripts": {
     "test:orchestrator": "tsx --test src/lib/orchestrator/*.test.ts",
-    "dev": "next dev",
+    "dev": "next dev --hostname 127.0.0.1",
     "build": "next build",
-    "start": "next start",
+    "start": "next start --hostname 127.0.0.1",
+    "test:security": "tsx --test src/lib/security/*.test.ts src/lib/providers/*.test.ts src/lib/mcp/*.test.ts src/lib/crypto/*.test.ts",
     "lint": "eslint"
   },
   "dependencies": {

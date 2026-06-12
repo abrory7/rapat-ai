@@ -14,7 +14,7 @@ interface Provider {
   name: string;
   type: string;
   baseUrl?: string;
-  apiKey: string;
+  hasApiKey: boolean;
   models: string[];
 }
 
@@ -122,21 +122,9 @@ export default function ProvidersPage() {
     setIsModalOpen(true);
   };
 
-  const handleOpenEditModal = async (provider: Provider) => {
-    // Fetch individual provider details to get the API Key (decrypted) for editing
-    try {
-      const res = await fetch(`/api/providers/${provider.id}`);
-      if (res.ok) {
-        const details = await res.json();
-        setEditingProvider(details);
-        setIsModalOpen(true);
-      } else {
-        alert('Failed to load provider details.');
-      }
-    } catch (e) {
-      console.error(e);
-      alert('Error loading provider details.');
-    }
+  const handleOpenEditModal = (provider: Provider) => {
+    setEditingProvider(provider);
+    setIsModalOpen(true);
   };
 
   const handleDeleteProvider = async (id: string) => {

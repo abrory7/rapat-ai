@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { decrypt } from '@/lib/crypto/encryption';
 import { diagnoseError, normalizeBaseUrl } from '@/lib/providers/url-normalizer';
+import { safeProviderFetch } from '@/lib/providers/destination-policy';
 
 type ProviderRecord = {
   type: string;
@@ -244,7 +245,7 @@ async function runOpenAIStyleTest({
   prompt: string;
 }): Promise<string> {
   const endpoint = `${baseUrl || 'https://api.openai.com/v1'}/chat/completions`;
-  const response = await fetch(endpoint, {
+  const response = await safeProviderFetch(endpoint, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -289,7 +290,7 @@ async function runOpenAIResponsesTest({
   prompt: string;
 }): Promise<string> {
   const endpoint = `${baseUrl || 'https://api.openai.com/v1'}/responses`;
-  const response = await fetch(endpoint, {
+  const response = await safeProviderFetch(endpoint, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -336,7 +337,7 @@ async function runOpenAICompletionFallback({
   prompt: string;
 }): Promise<string> {
   const endpoint = `${baseUrl || 'https://api.openai.com/v1'}/completions`;
-  const response = await fetch(endpoint, {
+  const response = await safeProviderFetch(endpoint, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -377,7 +378,7 @@ async function runAnthropicStyleTest({
   prompt: string;
 }): Promise<string> {
   const endpoint = `${baseUrl || 'https://api.anthropic.com'}/v1/messages`;
-  const response = await fetch(endpoint, {
+  const response = await safeProviderFetch(endpoint, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -421,7 +422,7 @@ async function runGoogleTest({
   prompt: string;
 }): Promise<string> {
   const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelId)}:generateContent?key=${encodeURIComponent(apiKey)}`;
-  const response = await fetch(endpoint, {
+  const response = await safeProviderFetch(endpoint, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -470,7 +471,7 @@ async function runOllamaTest({
   prompt: string;
 }): Promise<string> {
   const endpoint = `${baseUrl || 'http://localhost:11434'}/api/chat`;
-  const response = await fetch(endpoint, {
+  const response = await safeProviderFetch(endpoint, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

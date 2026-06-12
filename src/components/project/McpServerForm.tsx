@@ -11,7 +11,8 @@ interface McpServerData {
   command?: string;
   url?: string;
   args?: string[];
-  env?: Record<string, string>;
+  env?: Record<string, string | { hasValue: boolean }>;
+  removedEnvKeys?: string[];
   enabled: boolean;
 }
 
@@ -35,14 +36,18 @@ export const McpServerForm: React.FC<McpServerFormProps> = ({
   );
   
   // Format environment variables from Record<string, string> to string formatted as KEY=VAL\nKEY2=VAL2
-  const formatEnv = (envObj?: Record<string, string>): string => {
+  const formatEnv = (
+    envObj?: Record<string, string | { hasValue: boolean }>
+  ): string => {
     if (!envObj) return '';
     return Object.entries(envObj)
-      .map(([k, v]) => `${k}=${v}`)
+      .map(([k, v]) => `${k}=${typeof v === 'string' ? v : ''}`)
       .join('\n');
   };
 
-  const [envInput, setEnvInput] = useState(formatEnv(initialData?.env));
+  const [envInput, setEnvInput] = useState(
+    formatEnv(initialData?.env)
+  );
   const [enabled, setEnabled] = useState(
     initialData?.enabled !== undefined ? initialData.enabled : true
   );
@@ -94,6 +99,9 @@ export const McpServerForm: React.FC<McpServerFormProps> = ({
 
     setIsLoading(true);
     try {
+      const parsedEnv = type === 'stdio' ? parseEnv(envInput) : undefined;
+      const originalEnvKeys = Object.keys(initialData?.env || {});
+      const submittedEnvKeys = Object.keys(parsedEnv || {});
       await onSubmit({
         id: initialData?.id,
         name: name.trim(),
@@ -101,7 +109,8 @@ export const McpServerForm: React.FC<McpServerFormProps> = ({
         command: type === 'stdio' ? command.trim() : undefined,
         url: type === 'sse' ? url.trim() : undefined,
         args: type === 'stdio' ? parseArgs(argsInput) : undefined,
-        env: type === 'stdio' ? parseEnv(envInput) : undefined,
+        env: parsedEnv,
+        removedEnvKeys: originalEnvKeys.filter((key) => !submittedEnvKeys.includes(key)),
         enabled,
       });
     } catch (err) {
@@ -178,7 +187,10 @@ export const McpServerForm: React.FC<McpServerFormProps> = ({
               value={envInput}
               onChange={(e) => setEnvInput(e.target.value)}
             />
-            <span className={styles.helperText}>Extra environment variables for this process.</span>
+            <span className={styles.helperText}>
+              Stored values are hidden. Leave an existing KEY with a blank value to preserve it,
+              enter a value to replace it, or remove the line to delete it.
+            </span>
           </div>
         </>
       ) : (

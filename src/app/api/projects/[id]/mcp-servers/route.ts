@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
+import { encodeEnvironment, toMcpServerDto } from '@/lib/mcp/environment-secrets';
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -7,28 +8,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     const configs = await prisma.mcpServerConfig.findMany({
       where: { projectId: id },
     });
-    const parsed = configs.map((c) => {
-      let parsedArgs = [];
-      try {
-        parsedArgs = c.args ? JSON.parse(c.args) : [];
-      } catch {
-        parsedArgs = [];
-      }
-
-      let parsedEnv = {};
-      try {
-        parsedEnv = c.env ? JSON.parse(c.env) : {};
-      } catch {
-        parsedEnv = {};
-      }
-
-      return {
-        ...c,
-        args: parsedArgs,
-        env: parsedEnv,
-      };
-    });
-    return NextResponse.json(parsed);
+    return NextResponse.json(configs.map(toMcpServerDto));
   } catch (error) {
     console.error('Failed to fetch MCP configs:', error);
     return NextResponse.json({ error: 'Failed to fetch MCP configs' }, { status: 500 });
@@ -53,30 +33,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         command,
         url,
         args: args ? JSON.stringify(args) : null,
-        env: env ? JSON.stringify(env) : null,
+        env: env ? encodeEnvironment(env) : null,
         enabled: enabled ?? true,
       },
     });
 
-    let parsedArgs = [];
-    try {
-      parsedArgs = config.args ? JSON.parse(config.args) : [];
-    } catch {
-      parsedArgs = [];
-    }
-
-    let parsedEnv = {};
-    try {
-      parsedEnv = config.env ? JSON.parse(config.env) : {};
-    } catch {
-      parsedEnv = {};
-    }
-
-    return NextResponse.json({
-      ...config,
-      args: parsedArgs,
-      env: parsedEnv,
-    });
+    return NextResponse.json(toMcpServerDto(config));
   } catch (error) {
     console.error('Failed to create MCP config:', error);
     return NextResponse.json({ error: 'Failed to create MCP config' }, { status: 500 });

@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-import { encrypt, decrypt } from '@/lib/crypto/encryption';
+import { encrypt } from '@/lib/crypto/encryption';
+import { toProviderDto } from '@/lib/providers/provider-dto';
+import { assertSafeProviderUrl } from '@/lib/providers/destination-policy';
+import { normalizeBaseUrl } from '@/lib/providers/url-normalizer';
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -9,23 +12,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     if (!provider) {
       return NextResponse.json({ error: 'Provider not found' }, { status: 404 });
     }
-    let decryptedKey = '';
-    try {
-      decryptedKey = decrypt(provider.apiKey);
-    } catch {
-      decryptedKey = '';
-    }
-    let parsedModels = [];
-    try {
-      parsedModels = JSON.parse(provider.models);
-    } catch (e) {
-      parsedModels = [];
-    }
-    return NextResponse.json({
-      ...provider,
-      apiKey: decryptedKey,
-      models: parsedModels,
-    });
+    return NextResponse.json(toProviderDto(provider));
   } catch (error) {
     console.error('Failed to fetch provider:', error);
     return NextResponse.json({ error: 'Failed to fetch provider' }, { status: 500 });
@@ -43,9 +30,12 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
       return NextResponse.json({ error: 'Provider not found' }, { status: 404 });
     }
 
+    const normalizedBaseUrl = normalizeBaseUrl(baseUrl, type);
+    if (normalizedBaseUrl) await assertSafeProviderUrl(normalizedBaseUrl);
+
     let encryptedKey = provider.apiKey;
-    if (apiKey && apiKey !== '••••••••') {
-      encryptedKey = encrypt(apiKey);
+    if (typeof apiKey === 'string' && apiKey.trim()) {
+      encryptedKey = encrypt(apiKey.trim());
     }
 
     const updated = await prisma.provider.update({
@@ -53,24 +43,13 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
       data: {
         name,
         type,
-        baseUrl,
+        baseUrl: normalizedBaseUrl,
         apiKey: encryptedKey,
         models: JSON.stringify(models),
       },
     });
 
-    let parsedModels = [];
-    try {
-      parsedModels = JSON.parse(updated.models);
-    } catch (e) {
-      parsedModels = [];
-    }
-
-    return NextResponse.json({
-      ...updated,
-      apiKey: '••••••••',
-      models: parsedModels,
-    });
+    return NextResponse.json(toProviderDto(updated));
   } catch (error) {
     console.error('Failed to update provider:', error);
     return NextResponse.json({ error: 'Failed to update provider' }, { status: 500 });

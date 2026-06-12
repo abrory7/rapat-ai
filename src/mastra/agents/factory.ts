@@ -3,6 +3,7 @@ import { decrypt } from '@/lib/crypto/encryption';
 import { createOpenAI } from '@ai-sdk/openai';
 import { createAnthropic } from '@ai-sdk/anthropic';
 import { normalizeBaseUrl } from '@/lib/providers/url-normalizer';
+import { safeProviderFetch } from '@/lib/providers/destination-policy';
 
 interface RoleInput {
   id: string;
@@ -72,27 +73,9 @@ export function createAgentFromRole({
       };
 
   const customFetch = async (url: string | URL | Request, init?: RequestInit): Promise<Response> => {
-    const res = await fetch(url, init);
-    if (res.status >= 400) {
-      const contentType = res.headers.get('content-type') || '';
-      if (!contentType.includes('application/json')) {
-        try {
-          const cloned = res.clone();
-          const text = await cloned.text();
-          const urlString = typeof url === 'string'
-            ? url
-            : url instanceof URL
-              ? url.toString()
-              : (url as Request).url || url.toString();
-          console.error(
-            `[API Error Response Preview] Status: ${res.status}, URL: ${urlString}\nResponse text: ${text.slice(0, 300)}`
-          );
-        } catch {
-          // ignore
-        }
-      }
-    }
-    return res;
+    const urlString =
+      typeof url === 'string' ? url : url instanceof URL ? url.toString() : url.url;
+    return safeProviderFetch(urlString, init);
   };
 
   if (provider.type === 'openai-compatible') {

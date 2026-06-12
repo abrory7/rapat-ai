@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { normalizeBaseUrl, diagnoseError } from '@/lib/providers/url-normalizer';
-import { decrypt } from '@/lib/crypto/encryption';
+import { safeProviderFetch } from '@/lib/providers/destination-policy';
 
 export async function POST(req: Request) {
   try {
@@ -11,14 +11,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: false, error: 'Missing type or apiKey' }, { status: 400 });
     }
 
-    let actualApiKey = apiKey;
-    try {
-      if (apiKey.includes(':')) {
-        actualApiKey = decrypt(apiKey);
-      }
-    } catch {
-      // Use as-is
-    }
+    const actualApiKey = apiKey;
 
     const normalizedUrl = normalizeBaseUrl(baseUrl, type);
     let models: string[] = [];
@@ -26,7 +19,7 @@ export async function POST(req: Request) {
     if (type === 'openai' || type === 'openai-compatible') {
       const url = `${normalizedUrl || 'https://api.openai.com/v1'}/models`;
       try {
-        const res = await fetch(url, { headers: { 'Authorization': `Bearer ${actualApiKey}` }});
+        const res = await safeProviderFetch(url, { headers: { 'Authorization': `Bearer ${actualApiKey}` }});
         if (res.ok) {
           const data = await res.json();
           if (data && Array.isArray(data.data)) {
@@ -41,7 +34,7 @@ export async function POST(req: Request) {
     } else if (type === 'anthropic' || type === 'anthropic-compatible') {
       const url = `${normalizedUrl || 'https://api.anthropic.com'}/v1/models`;
       try {
-        const res = await fetch(url, { headers: { 'x-api-key': actualApiKey, 'anthropic-version': '2023-06-01' }});
+        const res = await safeProviderFetch(url, { headers: { 'x-api-key': actualApiKey, 'anthropic-version': '2023-06-01' }});
         if (res.ok) {
           const data = await res.json();
           if (data && Array.isArray(data.data)) {
@@ -58,7 +51,7 @@ export async function POST(req: Request) {
     } else if (type === 'google') {
       const url = `https://generativelanguage.googleapis.com/v1beta/models?key=${actualApiKey}`;
       try {
-        const res = await fetch(url);
+        const res = await safeProviderFetch(url);
         if (res.ok) {
           const data = await res.json();
           if (data && Array.isArray(data.models)) {
@@ -73,7 +66,7 @@ export async function POST(req: Request) {
     } else if (type === 'ollama') {
       const url = `${normalizedUrl || 'http://localhost:11434'}/api/tags`;
       try {
-        const res = await fetch(url);
+        const res = await safeProviderFetch(url);
         if (res.ok) {
           const data = await res.json();
           if (data && Array.isArray(data.models)) {

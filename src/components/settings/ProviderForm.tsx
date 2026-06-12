@@ -10,7 +10,8 @@ interface ProviderData {
   name: string;
   type: string;
   baseUrl?: string;
-  apiKey: string;
+  apiKey?: string;
+  hasApiKey?: boolean;
   models: string[];
 }
 
@@ -37,7 +38,7 @@ export const ProviderForm: React.FC<ProviderFormProps> = ({
   const [name, setName] = useState(initialData?.name || '');
   const [type, setType] = useState(initialData?.type || 'openai');
   const [baseUrl, setBaseUrl] = useState(initialData?.baseUrl || '');
-  const [apiKey, setApiKey] = useState(initialData?.apiKey || '');
+  const [apiKey, setApiKey] = useState('');
   const [models, setModels] = useState<string[]>(
     initialData?.models || DEFAULT_MODELS_BY_TYPE[initialData?.type || 'openai'] || []
   );
@@ -52,7 +53,7 @@ export const ProviderForm: React.FC<ProviderFormProps> = ({
 
   const handleTestConnection = async () => {
     if (!apiKey.trim()) {
-      alert('Please enter an API Key first.');
+      alert('Enter a new API key to validate it.');
       return;
     }
     
@@ -112,7 +113,7 @@ export const ProviderForm: React.FC<ProviderFormProps> = ({
 
   const handleFetchModels = async () => {
     if (!apiKey.trim()) {
-      alert('Please enter an API Key first.');
+      alert('Enter a new API key to fetch models.');
       return;
     }
     if (isCompatibleType && !baseUrl.trim()) {
@@ -171,7 +172,7 @@ export const ProviderForm: React.FC<ProviderFormProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim() || !apiKey.trim() || (isCompatibleType && !baseUrl.trim()) || models.length === 0) {
+    if (!name.trim() || (!initialData && !apiKey.trim()) || (isCompatibleType && !baseUrl.trim()) || models.length === 0) {
       alert('Please fill in all required fields (including Base URL for custom compatible providers) and add at least one model.');
       return;
     }
@@ -183,7 +184,7 @@ export const ProviderForm: React.FC<ProviderFormProps> = ({
         name: name.trim(),
         type,
         baseUrl: baseUrl.trim() || undefined,
-        apiKey: apiKey,
+          apiKey: apiKey.trim(),
         models,
       });
     } catch (error) {
@@ -259,18 +260,20 @@ export const ProviderForm: React.FC<ProviderFormProps> = ({
       </div>
 
       <div className={styles.formGroup}>
-        <label className={styles.label}>API Key / Token *</label>
+        <label className={styles.label}>
+          API Key / Token {initialData ? '(Optional replacement)' : '*'}
+        </label>
         <input
           type="password"
           className={styles.input}
-          placeholder={initialData ? '•••••••• (unchanged)' : 'Enter API Key'}
+          placeholder={initialData?.hasApiKey ? 'Stored securely; enter a new key to replace it' : 'Enter API Key'}
           value={apiKey}
           onChange={(e) => setApiKey(e.target.value)}
           required={!initialData}
         />
         {initialData && (
           <span className={styles.helperText}>
-            Leave as is unless you want to update it.
+            Leave blank to keep the stored key. Saved keys are never sent back to the browser.
           </span>
         )}
       </div>

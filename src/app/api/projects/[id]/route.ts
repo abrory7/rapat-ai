@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import fs from 'fs';
+import { toMcpServerDto } from '@/lib/mcp/environment-secrets';
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -20,7 +21,10 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     if (!project) {
       return NextResponse.json({ error: 'Project not found' }, { status: 404 });
     }
-    return NextResponse.json(project);
+    return NextResponse.json({
+      ...project,
+      mcpServers: project.mcpServers.map(toMcpServerDto),
+    });
   } catch (error) {
     console.error('Failed to fetch project:', error);
     return NextResponse.json({ error: 'Failed to fetch project' }, { status: 500 });
