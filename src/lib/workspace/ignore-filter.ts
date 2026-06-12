@@ -14,6 +14,8 @@ const PERMANENT_EXCLUSIONS = [
   '*.db',
   '*.sqlite',
   '*-journal',
+  '*-wal',
+  '*-shm',
   'node_modules',
   '.next',
   'dist',
@@ -24,14 +26,14 @@ const PERMANENT_EXCLUSIONS = [
 
 /**
  * Parses ignore rules from a newline-separated string.
- * Skips comments (#) and empty lines.
+ * The output is passed directly to the 'ignore' library which natively handles
+ * gitignore semantics including comments, empty lines, and trailing spaces.
  */
 export function parseIgnoreRules(rulesString?: string | null): string[] {
   if (!rulesString) return [];
-  return rulesString
-    .split('\n')
-    .map((line) => line.trim())
-    .filter((line) => line && !line.startsWith('#'));
+  // Split by newline but DO NOT trim, as gitignore semantics rely on exact matches
+  // (e.g. trailing spaces, escaped spaces). The 'ignore' library handles comments natively.
+  return rulesString.split(/\r?\n/);
 }
 
 /**

@@ -124,6 +124,28 @@ describe('writeOutputTool', () => {
       mockCtx
     ) as { success: boolean; error?: string };
     assert.equal(result3.success, false);
+
+    // Absolute filename
+    const result4 = await writeOutputTool.execute(
+      {
+        projectId,
+        fileName: '/etc/passwd',
+        content: 'hack',
+      },
+      mockCtx
+    ) as { success: boolean; error?: string };
+    assert.equal(result4.success, false);
+
+    // Nested filename
+    const result5 = await writeOutputTool.execute(
+      {
+        projectId,
+        fileName: 'nested/output.md',
+        content: 'hack',
+      },
+      mockCtx
+    ) as { success: boolean; error?: string };
+    assert.equal(result5.success, false);
   });
 
   it('rejects writing to symlinks via O_NOFOLLOW (prevents dangling symlink exploits)', async (t) => {
