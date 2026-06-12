@@ -5,6 +5,8 @@
 > Rapat AI is an advanced, self-hosted multi-agent discussion workspace operating directly on your local codebases. It orchestrates specialized AI agent roles (such as Product Manager, Architect, Engineer, QA, and Critic) to analyze your code using MCP (Model Context Protocol) tools and compile detailed technical planning documents under human supervision.
 >
 > ⚠️ **Note on Active Development:** Please note that several features, including the local workspace file-reading tools and Model Context Protocol (MCP) server integration, are currently under active development and may evolve or be subject to changes.
+>
+> 🔑 **BYOK (Bring Your Own Key) Only:** Rapat AI operates entirely on a Bring Your Own Key basis. No default, free, or pre-paid API keys are provided. You must supply your own API keys (e.g., Google Gemini, OpenAI, Anthropic) or connect local models (via Ollama) inside the settings dashboard to run the agents. All keys are encrypted using AES-256-GCM and stored locally in your database.
 
 ---
 
@@ -38,7 +40,7 @@ Here is a guide to the key directories in this project:
 *   **Local Codebase Tools:** Agents use secure workspace tools to read, list, and search files inside your project directory.
 *   **Model Context Protocol (MCP):** Connect custom stdio or SSE MCP servers on demand to extend agent capabilities.
 *   **Human-in-the-Loop Supervision:** Real-time chat dashboard displaying discussion steps, detected project badges (Flags, Decisions, Parking Lot), and instant Markdown previews.
-*   **Multi-Provider Support:** Plug in models from OpenAI, Anthropic, Google Gemini, or run local models via Ollama.
+*   **Multi-Provider Support (BYOK):** Plug in your own API keys for OpenAI, Anthropic, Google Gemini, or run local models via Ollama.
 
 ### 🤖 Agent Workspace Tools
 
@@ -69,7 +71,7 @@ Copy the template environment file:
 ```bash
 cp .env.example .env
 ```
-*(No need to enter API keys here. The actual keys will be registered securely via the web UI and encrypted at rest in the database).*
+*(No need to enter API keys here. Rapat AI is BYOK-only; your API keys will be registered securely via the web UI and encrypted at rest in the database).*
 
 ### 4. Initialize the Database & Seed Data
 Initialize your local SQLite database using Prisma and seed it with pre-built discussion roles, workflow templates, and agent skills:
