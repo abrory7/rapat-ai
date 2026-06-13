@@ -347,7 +347,7 @@ export async function runOrchestrationLoop(
 
       // 3. Summarize history and compile context
       const skills = role.skills.map((rs) => rs.skill);
-      
+
       try {
         const summaryResult = await summarizeHistoryIfNeeded({
           messages: session.messages.map(m => ({ sender: m.sender, content: m.content })),

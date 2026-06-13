@@ -24,7 +24,7 @@ export function buildCompilationPrompt({
   const transcriptParts: string[] = [];
   const OMISSION_MARKER = "[... older messages omitted due to length constraints ...]";
   const MAX_CHARS = 60000;
-  
+
   for (let i = messages.length - 1; i >= 0; i--) {
     const m = messages[i];
     const dateStr = m.createdAt instanceof Date ? m.createdAt.toLocaleTimeString() : new Date(m.createdAt).toLocaleTimeString();
@@ -65,10 +65,10 @@ export function buildCompilationPrompt({
       currentLength += separatorLength + fullPart.length;
     }
   }
-  
+
   const transcript = transcriptParts.join('\n\n');
 
-  let prompt = `You are the Project Coordinator and Compiler. The discussion session for the topic "${topic}" (Template: "${templateName}") is now complete. 
+  let prompt = `You are the Project Coordinator and Compiler. The discussion session for the topic "${topic}" (Template: "${templateName}") is now complete.
 Your task is to review the accumulated decisions, parking lot items, context summary, and conversation transcript below, and compile a final, comprehensive, and professional **Planning & Strategy Document** in Markdown.\n\n`;
 
   if (contextSummary) {

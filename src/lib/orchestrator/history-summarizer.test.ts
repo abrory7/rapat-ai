@@ -25,7 +25,7 @@ describe('history-summarizer', () => {
       summarizedMessageCount: 0,
       registeredSlugs: ['PM']
     });
-    
+
     assert.ok(result);
     assert.strictEqual(result.newSummarizedCount, 5); // length (15) - 10 = 5
     // Should contain deterministic summary for index 2, 3, 4
@@ -35,7 +35,7 @@ describe('history-summarizer', () => {
 
   it('should use provided model summarization and fallback on failure', async () => {
     const messages = Array.from({ length: 15 }, (_, i) => ({ sender: 'PM', content: `Message ${i}` }));
-    
+
     // Model success
     const successResult = await summarizeHistoryIfNeeded({
       messages,
@@ -43,10 +43,10 @@ describe('history-summarizer', () => {
       summarizedMessageCount: 0,
       registeredSlugs: ['PM']
     }, async () => 'Model Summary');
-    
+
     assert.ok(successResult);
     assert.strictEqual(successResult.newSummary, 'Model Summary');
-    
+
     // Model failure
     const failResult = await summarizeHistoryIfNeeded({
       messages,
@@ -54,7 +54,7 @@ describe('history-summarizer', () => {
       summarizedMessageCount: 0,
       registeredSlugs: ['PM']
     }, async () => { throw new Error('Model failed'); });
-    
+
     assert.ok(failResult);
     assert.ok(failResult.newSummary.includes('Old summary'));
     assert.ok(failResult.newSummary.includes('Message 2'));
@@ -68,7 +68,7 @@ describe('history-summarizer', () => {
       summarizedMessageCount: 4,
       registeredSlugs: ['PM']
     });
-    
+
     assert.ok(result);
     assert.strictEqual(result.newSummarizedCount, 5);
     // Should only summarize index 4

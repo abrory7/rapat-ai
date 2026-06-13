@@ -10,7 +10,7 @@ describe('Compilation Workflow Prompt Builder', () => {
       { sender: 'PM', content: longContent, createdAt: new Date() },
       { sender: 'ARCHITECT', content: longContent, createdAt: new Date() } // 90k chars total
     ];
-    
+
     const prompt = buildCompilationPrompt({
       topic: 'Test topic',
       templateName: 'Test template',
@@ -19,7 +19,7 @@ describe('Compilation Workflow Prompt Builder', () => {
       uniqueParkingLot: [],
       messages
     });
-    
+
     // The prompt should omit the oldest message to keep transcript bounded
     assert.ok(prompt.includes('omitted due to length constraints'));
     assert.ok(prompt.includes('[ARCHITECT]')); // youngest
@@ -81,7 +81,7 @@ describe('Compilation Workflow Prompt Builder', () => {
       contextSummary: 'Here is a summary.'
     });
     assert.ok(promptWithSummary.includes('Here is a summary.'));
-    
+
     const promptWithoutSummary = buildCompilationPrompt({
       topic: 'Test',
       templateName: 'Test',
