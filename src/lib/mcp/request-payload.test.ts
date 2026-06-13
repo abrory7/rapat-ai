@@ -49,3 +49,27 @@ test('update payloads preserve explicit environment removals but omit the id', (
   );
 });
 
+test('SSE update payloads omit all stdio-only fields', () => {
+  assert.deepEqual(
+    toMcpMutationPayload(
+      {
+        id: 'server-1',
+        name: 'Remote tools',
+        type: 'sse',
+        command: undefined,
+        url: 'https://example.com/events',
+        args: undefined,
+        env: undefined,
+        removedEnvKeys: ['OLD_TOKEN'],
+        enabled: true,
+      },
+      true
+    ),
+    {
+      name: 'Remote tools',
+      type: 'sse',
+      url: 'https://example.com/events',
+      enabled: true,
+    }
+  );
+});

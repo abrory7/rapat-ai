@@ -85,6 +85,14 @@ test('rejects mismatched and unknown create fields', () => {
       name: 'Remote tools',
       type: 'sse',
       url: 'https://example.com/events',
+      env: { TOKEN: 'not-valid-for-sse' },
+    })
+  );
+  assert.throws(() =>
+    parseMcpServerCreate({
+      name: 'Remote tools',
+      type: 'sse',
+      url: 'https://example.com/events',
       unexpected: true,
     })
   );
@@ -140,6 +148,12 @@ test('validates partial updates against the effective connection type', () => {
   assert.throws(() =>
     parseMcpServerUpdate(
       { type: 'sse', command: 'node', url: 'https://example.com/events' },
+      existingStdio
+    )
+  );
+  assert.throws(() =>
+    parseMcpServerUpdate(
+      { type: 'sse', url: 'https://example.com/events', env: { TOKEN: 'secret' } },
       existingStdio
     )
   );

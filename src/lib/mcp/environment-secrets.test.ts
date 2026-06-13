@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   decodeEnvironment,
+  encodeEnvironmentUpdate,
   mergeEnvironmentUpdate,
   toMcpServerDto,
   toEnvironmentMetadata,
@@ -22,6 +23,17 @@ test('environment updates preserve, replace, add, and explicitly remove values',
       ['REMOVE']
     ),
     { KEEP: 'old', REPLACE: 'new', ADD: 'value' }
+  );
+});
+
+test('SSE configurations clear stored stdio environment values', () => {
+  assert.equal(
+    encodeEnvironmentUpdate(
+      'sse',
+      '{"TOKEN":"legacy-secret"}',
+      null
+    ),
+    null
   );
 });
 

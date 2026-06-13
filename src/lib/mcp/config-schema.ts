@@ -16,7 +16,6 @@ const httpUrl = z.string().trim().url().refine((value) => {
 
 const commonFields = {
   name: nonEmptyString,
-  env: environment.optional(),
   enabled: z.boolean().optional(),
 };
 
@@ -25,6 +24,7 @@ const stdioCreateSchema = z.strictObject({
   type: z.literal('stdio'),
   command: nonEmptyString,
   args: stringArray.optional(),
+  env: environment.optional(),
 });
 
 const sseCreateSchema = z.strictObject({
@@ -82,7 +82,12 @@ export function parseMcpServerUpdate(
       throw new z.ZodError([]);
     }
   } else if (effectiveType === 'sse') {
-    if (update.command !== undefined || update.args !== undefined) {
+    if (
+      update.command !== undefined ||
+      update.args !== undefined ||
+      update.env !== undefined ||
+      update.removedEnvKeys !== undefined
+    ) {
       throw new z.ZodError([]);
     }
     const url = update.url ?? existing.url;

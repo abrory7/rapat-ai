@@ -42,6 +42,18 @@ export function mergeEnvironmentUpdate(
   return merged;
 }
 
+export function encodeEnvironmentUpdate(
+  connectionType: string,
+  existingStoredEnvironment: string | null,
+  nextEnvironment: EnvironmentMap | null
+): string | null {
+  if (connectionType === 'sse') return null;
+  if (nextEnvironment === null) return existingStoredEnvironment;
+  return Object.keys(nextEnvironment).length > 0
+    ? encodeEnvironment(nextEnvironment)
+    : null;
+}
+
 export function toEnvironmentMetadata(environment: EnvironmentMap) {
   return Object.fromEntries(
     Object.entries(environment).map(([key, value]) => [

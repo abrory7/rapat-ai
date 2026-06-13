@@ -45,7 +45,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
             input.type === 'stdio' && input.args
               ? JSON.stringify(input.args)
               : null,
-          env: input.env ? encodeEnvironment(input.env) : null,
+          env:
+            input.type === 'stdio' && input.env
+              ? encodeEnvironment(input.env)
+              : null,
           enabled: input.enabled ?? true,
         },
       })

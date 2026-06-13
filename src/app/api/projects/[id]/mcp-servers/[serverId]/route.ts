@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import {
   decodeEnvironment,
-  encodeEnvironment,
+  encodeEnvironmentUpdate,
   mergeEnvironmentUpdate,
   toMcpServerDto,
 } from '@/lib/mcp/environment-secrets';
@@ -85,12 +85,7 @@ export async function PUT(
                 ? JSON.stringify(input.args)
                 : config.args
               : null,
-          env:
-            nextEnvironment === null
-              ? config.env
-              : Object.keys(nextEnvironment).length > 0
-                ? encodeEnvironment(nextEnvironment)
-                : null,
+          env: encodeEnvironmentUpdate(nextType, config.env, nextEnvironment),
           enabled: input.enabled ?? config.enabled,
         },
       })
