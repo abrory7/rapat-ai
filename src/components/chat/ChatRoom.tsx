@@ -48,11 +48,17 @@ interface ChatRoomProps {
   sessionId: string;
 }
 
+interface CommandErrorPayload {
+  code?: string;
+  error?: string;
+}
+
 export const ChatRoom: React.FC<ChatRoomProps> = ({ sessionId }) => {
   const [session, setSession] = useState<Session | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [status, setStatus] = useState('IDLE');
+  const [commandError, setCommandError] = useState<CommandErrorPayload | null>(null);
   
   // Streaming state
   const [activeSpeaker, setActiveSpeaker] = useState<{ name: string; icon: string; color: string } | null>(null);
@@ -61,7 +67,7 @@ export const ChatRoom: React.FC<ChatRoomProps> = ({ sessionId }) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
 
-  const fetchSessionDetails = async () => {
+  const fetchSessionDetails = useCallback(async () => {
     try {
       const res = await fetch(`/api/sessions/${sessionId}`);
       if (res.ok) {
@@ -75,14 +81,13 @@ export const ChatRoom: React.FC<ChatRoomProps> = ({ sessionId }) => {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [sessionId]);
 
   useEffect(() => {
+    // Initial data loading is an external synchronization with the session API.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchSessionDetails();
-    // Initial load intentionally follows sessionId changes only.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId]);
+  }, [fetchSessionDetails]);
 
   // Connect to SSE stream
   useEffect(() => {
@@ -168,7 +173,7 @@ export const ChatRoom: React.FC<ChatRoomProps> = ({ sessionId }) => {
         eventSourceRef.current = null;
       }
     };
-  }, [status, session, sessionId]);
+  }, [fetchSessionDetails, status, session, sessionId]);
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -176,6 +181,7 @@ export const ChatRoom: React.FC<ChatRoomProps> = ({ sessionId }) => {
   }, [messages, streamingContent, activeSpeaker]);
 
   const handleControlCommand = useCallback(async (command: 'start' | 'pause' | 'resume' | 'stop' | 'retry-compile') => {
+    setCommandError(null);
     try {
       const res = await fetch('/api/orchestrate', {
         method: 'POST',
@@ -195,12 +201,18 @@ export const ChatRoom: React.FC<ChatRoomProps> = ({ sessionId }) => {
         setStatus(nextStatus);
         setSession((prev) => prev ? { ...prev, status: nextStatus } : null);
       } else {
-        const err = await res.json();
-        alert(err.error || 'Failed to send command.');
+        const errorPayload = await res.json() as CommandErrorPayload;
+        setCommandError({
+          code: errorPayload.code,
+          error: errorPayload.error || 'Failed to send command.',
+        });
       }
     } catch (e) {
       console.error(e);
-      alert('Error sending command.');
+      setCommandError({
+        code: 'NETWORK_ERROR',
+        error: 'Could not reach the orchestration service.',
+      });
     }
   }, [sessionId]);
 
@@ -277,6 +289,15 @@ export const ChatRoom: React.FC<ChatRoomProps> = ({ sessionId }) => {
               <span className={styles.statusText}>{status}</span>
             </span>
           </div>
+          {commandError && (
+            <div className={styles.commandError} role="alert">
+              <AlertTriangle size={14} aria-hidden="true" />
+              <span>{commandError.error}</span>
+              {commandError.code && (
+                <code className={styles.commandErrorCode}>{commandError.code}</code>
+              )}
+            </div>
+          )}
         </div>
 
         <div className={styles.controls}>

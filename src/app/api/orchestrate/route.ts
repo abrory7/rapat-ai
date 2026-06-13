@@ -7,19 +7,59 @@ import {
   registerSessionListener,
   unregisterSessionListener,
   retryCompileSession,
+  OrchestrationCommandError,
 } from '@/lib/orchestrator/engine';
 
 type OrchestrationEvent = Record<string, unknown>;
 
-function getErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : 'Action failed';
+interface OrchestrationErrorResponse {
+  status: number;
+  body: {
+    code: string;
+    error: string;
+  };
+}
+
+export function getOrchestrationErrorResponse(
+  error: unknown
+): OrchestrationErrorResponse {
+  if (error instanceof OrchestrationCommandError) {
+    const statusByCode = {
+      SESSION_NOT_FOUND: 404,
+      SESSION_ALREADY_ACTIVE: 409,
+      INVALID_SESSION_STATE: 409,
+      COMPILATION_FAILED: 422,
+    } as const;
+
+    return {
+      status: statusByCode[error.code],
+      body: {
+        code: error.code,
+        error: error.message,
+      },
+    };
+  }
+
+  return {
+    status: 500,
+    body: {
+      code: 'INTERNAL_ERROR',
+      error: 'Action failed.',
+    },
+  };
 }
 
 export async function POST(req: NextRequest) {
   try {
     const { sessionId, command } = await req.json();
     if (!sessionId || !command) {
-      return NextResponse.json({ error: 'Missing sessionId or command' }, { status: 400 });
+      return NextResponse.json(
+        {
+          code: 'INVALID_REQUEST',
+          error: 'Missing sessionId or command.',
+        },
+        { status: 400 }
+      );
     }
 
     if (command === 'start') {
@@ -33,13 +73,20 @@ export async function POST(req: NextRequest) {
     } else if (command === 'retry-compile') {
       await retryCompileSession(sessionId);
     } else {
-      return NextResponse.json({ error: 'Invalid command' }, { status: 400 });
+      return NextResponse.json(
+        {
+          code: 'INVALID_COMMAND',
+          error: 'Invalid command.',
+        },
+        { status: 400 }
+      );
     }
 
     return NextResponse.json({ success: true });
   } catch (error: unknown) {
     console.error('Orchestration control command failed:', error);
-    return NextResponse.json({ error: getErrorMessage(error) }, { status: 500 });
+    const response = getOrchestrationErrorResponse(error);
+    return NextResponse.json(response.body, { status: response.status });
   }
 }
 
