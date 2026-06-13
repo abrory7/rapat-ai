@@ -13,6 +13,7 @@ import {
   releaseSessionLease,
   SESSION_HEARTBEAT_MS,
 } from './session-lease';
+import { summarizeHistoryIfNeeded } from './history-summarizer';
 
 // Simple in-memory registry of active stream listeners
 const activeListeners = new Map<string, Set<(data: any) => void>>();
@@ -344,8 +345,45 @@ export async function runOrchestrationLoop(
       // 2. Fetch project tools (workspace + custom MCP tools)
       const tools = await engineDeps.getMergedToolsForProject(session.projectId);
 
-      // 3. Compile prompt and context
+      // 3. Summarize history and compile context
       const skills = role.skills.map((rs) => rs.skill);
+      
+      try {
+        const summaryResult = await summarizeHistoryIfNeeded({
+          messages: session.messages.map(m => ({ sender: m.sender, content: m.content })),
+          currentSummary: session.contextSummary,
+          summarizedMessageCount: session.summarizedMessageCount,
+          registeredSlugs
+        }, async (text: string) => {
+           const summarizerAgent = engineDeps.createAgentFromRole({
+             role,
+             provider,
+             skills: [],
+             tools: {},
+           });
+           const stream = await summarizerAgent.stream(text);
+           let result = '';
+           for await (const chunk of stream.textStream) {
+             result += chunk;
+           }
+           return result;
+        });
+
+        if (summaryResult) {
+          await engineDeps.prisma.session.update({
+            where: { id: sessionId },
+            data: {
+              contextSummary: summaryResult.newSummary,
+              summarizedMessageCount: summaryResult.newSummarizedCount
+            }
+          });
+          session.contextSummary = summaryResult.newSummary;
+          session.summarizedMessageCount = summaryResult.newSummarizedCount;
+        }
+      } catch (sumErr) {
+        console.warn(`[Orchestration] Non-fatal summarization error:`, sumErr);
+      }
+
       const context = await buildContext({
         session,
         role,

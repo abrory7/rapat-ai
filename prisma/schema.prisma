@@ -118,6 +118,8 @@ model Session {
   planningDocument String?            // Markdown text of compiled output
   runToken          String?
   leaseExpiresAt    DateTime?
+  contextSummary         String?
+  summarizedMessageCount Int @default(0)
   createdAt        DateTime           @default(now())
   updatedAt        DateTime           @updatedAt
   messages         Message[]

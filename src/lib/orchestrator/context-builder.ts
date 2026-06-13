@@ -12,6 +12,8 @@ interface SessionInput {
     name: string;
     rules?: string | null;
   };
+  contextSummary?: string | null;
+  summarizedMessageCount?: number;
 }
 
 interface RoleInput {
@@ -112,6 +114,9 @@ Act as if you are in a real, dynamic professional meeting. Review the conversati
     const lastMessages = messages.slice(-10);
     const middleCount = messages.length - 12;
     summaryText = `[System: ${middleCount} historical messages omitted for context size limit. Active decisions and parking lot are listed above.]\n`;
+    if (session.contextSummary) {
+      summaryText += `\n**Previous Discussion Summary:**\n${session.contextSummary}\n`;
+    }
     historyMessages = [...firstMessages, ...lastMessages];
   }
 
