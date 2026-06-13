@@ -92,4 +92,31 @@ describe('Compilation Workflow Prompt Builder', () => {
     });
     assert.ok(!promptWithoutSummary.includes('PREVIOUS DISCUSSION SUMMARY:'));
   });
+
+  it('should use a bounded context summary projection', () => {
+    const contextSummary = [
+      'N'.repeat(8000),
+      '### STRUCTURED FACTS',
+      'Decisions:',
+      ...Array.from({ length: 200 }, (_, index) => `  * Decision ${index}: ${'X'.repeat(200)}`),
+    ].join('\n');
+
+    const prompt = buildCompilationPrompt({
+      topic: 'Test',
+      templateName: 'Test',
+      roleGuidance: '',
+      uniqueDecisions: [],
+      uniqueParkingLot: [],
+      messages: [],
+      contextSummary,
+    });
+    const summarySection = prompt
+      .split('### PREVIOUS DISCUSSION SUMMARY:\n')[1]
+      .split('\n\n### ACCUMULATED DECISIONS:')[0];
+
+    assert.ok(summarySection.length <= 12000);
+    assert.ok(summarySection.includes('SUMMARY CONTENT OMITTED DUE TO SIZE LIMIT'));
+    assert.ok(summarySection.includes('Decision 199'));
+    assert.ok(!summarySection.includes('Decision 0:'));
+  });
 });

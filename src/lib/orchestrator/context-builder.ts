@@ -1,4 +1,5 @@
 import { parseResponse } from './response-parser';
+import { projectSummaryForPrompt } from './history-summarizer';
 
 interface Message {
   sender: string;
@@ -115,7 +116,8 @@ Act as if you are in a real, dynamic professional meeting. Review the conversati
     const middleCount = messages.length - 12;
     summaryText = `[System: ${middleCount} historical messages omitted for context size limit. Active decisions and parking lot are listed above.]\n`;
     if (session.contextSummary) {
-      summaryText += `\n**Previous Discussion Summary:**\n${session.contextSummary}\n`;
+      const projectedSummary = projectSummaryForPrompt(session.contextSummary);
+      summaryText += `\n**Previous Discussion Summary:**\n${projectedSummary}\n`;
     }
     historyMessages = [...firstMessages, ...lastMessages];
   }

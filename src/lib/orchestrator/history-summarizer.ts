@@ -20,6 +20,10 @@ export interface ExtractedFacts {
   conclusions: string[];
 }
 
+export const SUMMARY_PROMPT_MAX_CHARS = 12000;
+const SUMMARY_OMISSION_MARKER = '[... SUMMARY CONTENT OMITTED DUE TO SIZE LIMIT ...]';
+const STRUCTURED_FACTS_SEPARATOR = '### STRUCTURED FACTS';
+
 /**
  * Extracts unresolved questions using various tags, bracket shapes, and styles.
  */
@@ -159,8 +163,6 @@ export function parseStructuredFacts(text: string): ExtractedFacts {
       currentCategory = 'unresolved';
     } else if (lower.startsWith('conclusions:')) {
       currentCategory = 'conclusions';
-    } else if ((trimmed.startsWith('-') || trimmed.startsWith('*')) && (lower.includes(' spoke:') || lower.includes('delegated to'))) {
-      currentCategory = null;
     } else if (trimmed.startsWith('*') || trimmed.startsWith('-')) {
       const match = trimmed.match(/^[-*]\s*(.*)$/);
       const content = match ? match[1].trim() : '';
@@ -177,11 +179,63 @@ export function parseStructuredFacts(text: string): ExtractedFacts {
   return { decisions, flags, parkingLot, unresolved, conclusions };
 }
 
+function parseLegacyStructuredFacts(text: string): ExtractedFacts {
+  const facts: ExtractedFacts = {
+    decisions: [],
+    flags: [],
+    parkingLot: [],
+    unresolved: [],
+    conclusions: [],
+  };
+  let currentCategory: keyof ExtractedFacts | null = null;
+
+  for (const line of text.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+
+    const indentation = line.length - line.trimStart().length;
+    const lower = trimmed.toLowerCase();
+    if (lower.startsWith('decisions:')) {
+      currentCategory = 'decisions';
+      continue;
+    }
+    if (lower.startsWith('flags:')) {
+      currentCategory = 'flags';
+      continue;
+    }
+    if (lower.startsWith('parking lot:')) {
+      currentCategory = 'parkingLot';
+      continue;
+    }
+    if (lower.startsWith('unresolved questions:')) {
+      currentCategory = 'unresolved';
+      continue;
+    }
+    if (lower.startsWith('role conclusions:') || lower.startsWith('conclusions:')) {
+      currentCategory = 'conclusions';
+      continue;
+    }
+
+    const bulletMatch = trimmed.match(/^[-*]\s*(.*)$/);
+    if (bulletMatch && indentation > 0 && currentCategory) {
+      const content = bulletMatch[1].trim();
+      if (content) facts[currentCategory].push(content);
+      continue;
+    }
+
+    if (indentation === 0) {
+      currentCategory = null;
+    }
+  }
+
+  return facts;
+}
+
 /**
  * Extracts all structured facts from a legacy summary text without separators.
  */
-export function extractFactsFromText(text: string, registeredSlugs: string[]): ExtractedFacts {
-  const parsed = parseStructuredFacts(text);
+export function extractFactsFromText(text: string): ExtractedFacts {
+  const parsed = parseLegacyStructuredFacts(text);
 
   const inlineDecisions: string[] = [];
   let match;
@@ -223,24 +277,6 @@ export function extractFactsFromText(text: string, registeredSlugs: string[]): E
 }
 
 /**
- * Binds extracted facts to prevent unbounded growth.
- * Limits each category to 50 most recent items and caps individual fact lengths to 500 characters.
- */
-export function boundExtractedFacts(facts: ExtractedFacts): ExtractedFacts {
-  const limitList = (list: string[]) =>
-    list
-      .map(item => item.length > 200 ? item.substring(0, 197) + '...' : item);
-
-  return {
-    decisions: limitList(facts.decisions),
-    flags: limitList(facts.flags),
-    parkingLot: limitList(facts.parkingLot),
-    unresolved: limitList(facts.unresolved),
-    conclusions: limitList(facts.conclusions),
-  };
-}
-
-/**
  * Formats extracted facts into markdown block.
  */
 export function formatExtractedFacts(facts: ExtractedFacts): string {
@@ -261,6 +297,99 @@ export function formatExtractedFacts(facts: ExtractedFacts): string {
     lines.push(`Conclusions:\n${facts.conclusions.map(c => `  * ${c}`).join('\n')}`);
   }
   return lines.join('\n');
+}
+
+function splitSummary(summary: string): { narrative: string; structuredPart: string } {
+  const separatorIndex = summary.indexOf(STRUCTURED_FACTS_SEPARATOR);
+  if (separatorIndex === -1) {
+    return { narrative: summary.trim(), structuredPart: '' };
+  }
+
+  return {
+    narrative: summary.slice(0, separatorIndex).trim(),
+    structuredPart: summary.slice(separatorIndex + STRUCTURED_FACTS_SEPARATOR.length).trim(),
+  };
+}
+
+function projectTextTail(text: string, maxChars: number): string {
+  if (text.length <= maxChars) return text;
+  if (maxChars <= SUMMARY_OMISSION_MARKER.length + 1) {
+    return SUMMARY_OMISSION_MARKER.slice(0, maxChars);
+  }
+  const contentLength = maxChars - SUMMARY_OMISSION_MARKER.length - 1;
+  return `${SUMMARY_OMISSION_MARKER}\n${text.slice(-contentLength)}`;
+}
+
+/**
+ * Creates a bounded prompt-only view of a durable summary.
+ */
+export function projectSummaryForPrompt(
+  summary: string,
+  maxChars = SUMMARY_PROMPT_MAX_CHARS
+): string {
+  if (!summary || summary.length <= maxChars) return summary;
+  if (maxChars <= 0) return '';
+
+  const { narrative, structuredPart } = splitSummary(summary);
+  if (!structuredPart) {
+    return projectTextTail(narrative, maxChars);
+  }
+
+  const narrativeBudget = Math.min(4000, Math.floor(maxChars / 3));
+  const projectedNarrative = narrative.length > narrativeBudget
+    ? narrative.slice(-narrativeBudget)
+    : narrative;
+  const facts = parseStructuredFacts(structuredPart);
+  const selected: ExtractedFacts = {
+    decisions: [],
+    flags: [],
+    parkingLot: [],
+    unresolved: [],
+    conclusions: [],
+  };
+  const categories: Array<keyof ExtractedFacts> = [
+    'decisions',
+    'flags',
+    'parkingLot',
+    'unresolved',
+    'conclusions',
+  ];
+  const positions = Object.fromEntries(
+    categories.map((category) => [category, facts[category].length - 1])
+  ) as Record<keyof ExtractedFacts, number>;
+
+  const render = () => {
+    const parts = [SUMMARY_OMISSION_MARKER];
+    if (projectedNarrative) parts.push(projectedNarrative);
+    const formattedFacts = formatExtractedFacts(selected);
+    if (formattedFacts) parts.push(`${STRUCTURED_FACTS_SEPARATOR}\n${formattedFacts}`);
+    return parts.join('\n\n');
+  };
+
+  let madeProgress = true;
+  while (madeProgress) {
+    madeProgress = false;
+    for (const category of categories) {
+      const position = positions[category];
+      if (position < 0) continue;
+
+      const original = facts[category][position];
+      const projected = original.length > 1000
+        ? `${original.slice(0, 997)}...`
+        : original;
+      selected[category].unshift(projected);
+
+      if (render().length <= maxChars) {
+        positions[category] -= 1;
+        madeProgress = true;
+      } else {
+        selected[category].shift();
+        positions[category] = -1;
+      }
+    }
+  }
+
+  return render().slice(0, maxChars);
 }
 
 /**
@@ -285,14 +414,13 @@ export function createDeterministicSummary(
   let oldFacts: ExtractedFacts = { decisions: [], flags: [], parkingLot: [], unresolved: [], conclusions: [] };
 
   if (previousSummary) {
-    if (previousSummary.includes('### STRUCTURED FACTS')) {
-      const parts = previousSummary.split('### STRUCTURED FACTS');
-      previousNarrative = parts[0].trim();
-      const oldStructuredPart = parts[1] || '';
+    if (previousSummary.includes(STRUCTURED_FACTS_SEPARATOR)) {
+      const { narrative, structuredPart: oldStructuredPart } = splitSummary(previousSummary);
+      previousNarrative = narrative;
       oldFacts = parseStructuredFacts(oldStructuredPart);
     } else {
       previousNarrative = previousSummary.trim();
-      oldFacts = extractFactsFromText(previousSummary, registeredSlugs);
+      oldFacts = extractFactsFromText(previousSummary);
     }
   }
 
@@ -318,12 +446,11 @@ export function createDeterministicSummary(
     conclusions: Array.from(new Set([...oldFacts.conclusions, ...newFacts.conclusions])),
   };
 
-  const boundedFacts = boundExtractedFacts(mergedFacts);
-  const formattedFacts = formatExtractedFacts(boundedFacts);
+  const formattedFacts = formatExtractedFacts(mergedFacts);
 
   let result = newNarrative;
   if (formattedFacts) {
-    result += `\n\n### STRUCTURED FACTS\n${formattedFacts}`;
+    result += `\n\n${STRUCTURED_FACTS_SEPARATOR}\n${formattedFacts}`;
   }
   return result;
 }
@@ -354,14 +481,13 @@ export async function summarizeHistoryIfNeeded(
   let oldFacts: ExtractedFacts = { decisions: [], flags: [], parkingLot: [], unresolved: [], conclusions: [] };
 
   if (currentSummary) {
-    if (currentSummary.includes('### STRUCTURED FACTS')) {
-      const parts = currentSummary.split('### STRUCTURED FACTS');
-      previousNarrative = parts[0].trim();
-      const oldStructuredPart = parts[1] || '';
+    if (currentSummary.includes(STRUCTURED_FACTS_SEPARATOR)) {
+      const { narrative, structuredPart: oldStructuredPart } = splitSummary(currentSummary);
+      previousNarrative = narrative;
       oldFacts = parseStructuredFacts(oldStructuredPart);
     } else {
       previousNarrative = currentSummary.trim();
-      oldFacts = extractFactsFromText(currentSummary, registeredSlugs);
+      oldFacts = extractFactsFromText(currentSummary);
     }
   }
 
@@ -394,10 +520,10 @@ ${textToSummarize}`;
 
       let modelNarrative = generated;
       let modelStructuredPart = '';
-      if (generated.includes('### STRUCTURED FACTS')) {
-        const parts = generated.split('### STRUCTURED FACTS');
-        modelNarrative = parts[0].trim();
-        modelStructuredPart = parts[1] || '';
+      if (generated.includes(STRUCTURED_FACTS_SEPARATOR)) {
+        const generatedParts = splitSummary(generated);
+        modelNarrative = generatedParts.narrative;
+        modelStructuredPart = generatedParts.structuredPart;
       }
 
       const modelFacts = parseStructuredFacts(modelStructuredPart);
@@ -409,13 +535,12 @@ ${textToSummarize}`;
         conclusions: Array.from(new Set([...mergedFacts.conclusions, ...modelFacts.conclusions])),
       };
 
-      const boundedFacts = boundExtractedFacts(fullyMergedFacts);
-      const formattedFacts = formatExtractedFacts(boundedFacts);
+      const formattedFacts = formatExtractedFacts(fullyMergedFacts);
       const limitedNarrative = enforceNarrativeLimit(modelNarrative, 5000);
 
       newSummaryText = limitedNarrative;
       if (formattedFacts) {
-        newSummaryText += `\n\n### STRUCTURED FACTS\n${formattedFacts}`;
+        newSummaryText += `\n\n${STRUCTURED_FACTS_SEPARATOR}\n${formattedFacts}`;
       }
     } catch (e) {
       console.warn('Model summarization failed, falling back to deterministic summary', e);

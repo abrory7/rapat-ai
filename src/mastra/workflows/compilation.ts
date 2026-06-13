@@ -1,6 +1,7 @@
 import { createAgentFromRole } from '../agents/factory';
 import { prisma } from '@/lib/db';
 import { parseResponse } from '@/lib/orchestrator/response-parser';
+import { projectSummaryForPrompt } from '@/lib/orchestrator/history-summarizer';
 
 export function buildCompilationPrompt({
   topic,
@@ -71,7 +72,7 @@ export function buildCompilationPrompt({
 Your task is to review the accumulated decisions, parking lot items, context summary, and conversation transcript below, and compile a final, comprehensive, and professional **Planning & Strategy Document** in Markdown.\n\n`;
 
   if (contextSummary) {
-    prompt += `### PREVIOUS DISCUSSION SUMMARY:\n${contextSummary}\n\n`;
+    prompt += `### PREVIOUS DISCUSSION SUMMARY:\n${projectSummaryForPrompt(contextSummary)}\n\n`;
   }
 
   prompt += `### ACCUMULATED DECISIONS:\n${uniqueDecisions.length > 0 ? uniqueDecisions.map((d) => `- ${d}`).join('\n') : 'None recorded.'}\n\n### PARKING LOT (DEFERRED ITEMS):\n${uniqueParkingLot.length > 0 ? uniqueParkingLot.map((p) => `- ${p}`).join('\n') : 'None recorded.'}\n\n### LATEST DISCUSSION TRANSCRIPT:\n${transcript}\n\n### COMPILATION GUIDELINES:

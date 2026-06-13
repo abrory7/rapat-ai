@@ -1,6 +1,9 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
-import { summarizeHistoryIfNeeded } from './history-summarizer';
+import {
+  projectSummaryForPrompt,
+  summarizeHistoryIfNeeded,
+} from './history-summarizer';
 
 describe('history-summarizer', () => {
   it('should return null if messages are 12 or less', async () => {
@@ -182,7 +185,7 @@ describe('history-summarizer', () => {
     assert.ok(result.newSummary.includes('LegacyQuestionOwner?'));
   });
 
-  it('should bound structured facts item characters but not slice decisions', async () => {
+  it('should preserve complete structured fact values without slicing decisions', async () => {
     // Generate 60 decisions in messages, one of which is very long
     const messages = Array.from({ length: 15 }, (_, i) => {
       let content = `Message ${i}`;
@@ -209,18 +212,18 @@ describe('history-summarizer', () => {
     const decisionMatches = structuredPart.match(/DecisionNumber/g);
     assert.strictEqual(decisionMatches && decisionMatches.length, 60);
 
-    // VeryLongDecision should be truncated to 200 chars
+    // Durable facts must remain complete even when they are long.
     assert.ok(result.newSummary.includes('VeryLongDecision'));
     const truncatedLine = result.newSummary.split('\n').find(line => line.includes('VeryLongDecision'));
-    assert.ok(truncatedLine && truncatedLine.length < 220);
-    assert.ok(truncatedLine.includes('...'));
+    assert.ok(truncatedLine && truncatedLine.includes('X'.repeat(600)));
   });
 
-  it('should reset category parsing on legacy fallback sender lines to avoid false structured facts', async () => {
+  it('should parse legacy fact bullets by indentation without classifying sender lines as facts', async () => {
     const legacySummary = `
 - PM spoke: "Initial prompt"
   Extracted Data:
   Decisions:
+    * PM spoke: approve rollout
     * LegacyDecision1
 - QA spoke: "Need tests"
     `;
@@ -234,9 +237,27 @@ describe('history-summarizer', () => {
 
     assert.ok(result);
     assert.ok(result.newSummary.includes('LegacyDecision1'));
-    // The QA spoke line must NOT be parsed as a decision!
     const parts = result.newSummary.split('### STRUCTURED FACTS');
     const structuredPart = parts[1] || '';
+    assert.ok(structuredPart.includes('PM spoke: approve rollout'));
     assert.ok(!structuredPart.includes('Need tests'));
+  });
+
+  it('should project a large durable summary into a bounded prompt representation', () => {
+    const durableSummary = [
+      'N'.repeat(8000),
+      '### STRUCTURED FACTS',
+      'Decisions:',
+      ...Array.from({ length: 200 }, (_, index) => `  * Decision ${index}: ${'X'.repeat(200)}`),
+    ].join('\n');
+
+    const projected = projectSummaryForPrompt(durableSummary, 6000);
+
+    assert.ok(projected.length <= 6000);
+    assert.ok(projected.includes('SUMMARY CONTENT OMITTED DUE TO SIZE LIMIT'));
+    assert.strictEqual(projected.match(/SUMMARY CONTENT OMITTED DUE TO SIZE LIMIT/g)?.length, 1);
+    assert.ok(projected.includes('Decision 199'));
+    assert.ok(!projected.includes('Decision 0:'));
+    assert.ok(durableSummary.includes('Decision 0:'));
   });
 });
