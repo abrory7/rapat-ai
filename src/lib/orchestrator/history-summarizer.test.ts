@@ -121,17 +121,23 @@ describe('history-summarizer', () => {
     assert.ok(result.newSummary.includes('desain siap'));
   });
 
-  it('should enforce narrative summary size limit', async () => {
-    const messages = Array.from({ length: 15 }, (_, i) => ({ sender: 'PM', content: `Message ${i}` }));
+  it('should enforce narrative summary size limit by truncating from the start (retaining end)', async () => {
+    const messages = Array.from({ length: 15 }, (_, i) => ({
+      sender: 'PM',
+      content: i === 4 ? 'NewestImportantMessage' : `Message ${i}`
+    }));
     const result = await summarizeHistoryIfNeeded({
       messages,
       currentSummary: 'A'.repeat(6000),
       summarizedMessageCount: 0,
       registeredSlugs: ['PM']
-    }, async () => 'B'.repeat(6000));
+    });
 
     assert.ok(result);
-    assert.ok(result.newSummary.includes('[NARRATIVE TRUNCATED DUE TO SIZE LIMIT]'));
+    assert.ok(result.newSummary.includes('[NARRATIVE TRUNCATED FROM START DUE TO SIZE LIMIT]'));
+    // Old A should be truncated, but the newest message should be retained at the end
+    assert.ok(result.newSummary.includes('NewestImportantMessage'));
+    assert.ok(!result.newSummary.startsWith('A'.repeat(6000)));
     assert.ok(result.newSummary.length < 5500);
   });
 
@@ -160,5 +166,52 @@ describe('history-summarizer', () => {
     assert.ok(result.newSummary.includes('### STRUCTURED FACTS'));
     assert.ok(result.newSummary.includes('Release on Friday'));
     assert.ok(result.newSummary.includes('Risk found'));
+  });
+
+  it('should extract facts from legacy summary format without structured facts separator', async () => {
+    const messages = Array.from({ length: 15 }, (_, i) => ({ sender: 'PM', content: `Message ${i}` }));
+    const result = await summarizeHistoryIfNeeded({
+      messages,
+      currentSummary: 'We discussed timeline.\n- [DECISION] LegacyDecisionApproved\n[UNRESOLVED: LegacyQuestionOwner?]',
+      summarizedMessageCount: 0,
+      registeredSlugs: ['PM']
+    });
+
+    assert.ok(result);
+    assert.ok(result.newSummary.includes('LegacyDecisionApproved'));
+    assert.ok(result.newSummary.includes('LegacyQuestionOwner?'));
+  });
+
+  it('should bound structured facts categories and truncate individual item characters', async () => {
+    // Generate 60 decisions in messages, one of which is very long
+    const messages = Array.from({ length: 15 }, (_, i) => {
+      let content = `Message ${i}`;
+      if (i === 2) {
+        // 60 decisions
+        content += Array.from({ length: 60 }, (_, j) => `\n- [DECISION] DecisionNumber${j}`).join('');
+        // One very long decision
+        content += `\n- [DECISION] VeryLongDecision` + 'X'.repeat(600);
+      }
+      return { sender: 'PM', content };
+    });
+
+    const result = await summarizeHistoryIfNeeded({
+      messages,
+      currentSummary: null,
+      summarizedMessageCount: 0,
+      registeredSlugs: ['PM']
+    });
+
+    assert.ok(result);
+    // Categorical list is capped to 50 items in the structured facts section
+    const parts = result.newSummary.split('### STRUCTURED FACTS');
+    const structuredPart = parts[1] || '';
+    const decisionMatches = structuredPart.match(/DecisionNumber/g);
+    assert.ok(decisionMatches && decisionMatches.length <= 50);
+    // VeryLongDecision should be truncated to 500 chars (approx. 500 chars, so contains X but is not full length)
+    assert.ok(result.newSummary.includes('VeryLongDecision'));
+    const truncatedLine = result.newSummary.split('\n').find(line => line.includes('VeryLongDecision'));
+    assert.ok(truncatedLine && truncatedLine.length < 520);
+    assert.ok(truncatedLine.includes('...'));
   });
 });

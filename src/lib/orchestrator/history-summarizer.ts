@@ -176,6 +176,70 @@ export function parseStructuredFacts(text: string): ExtractedFacts {
 }
 
 /**
+ * Extracts all structured facts from a legacy summary text without separators.
+ */
+export function extractFactsFromText(text: string, registeredSlugs: string[]): ExtractedFacts {
+  const parsed = parseStructuredFacts(text);
+
+  const inlineDecisions: string[] = [];
+  let match;
+  const decisionRegex = /\[DECISION:\s*([^\]\n]+)\]/gi;
+  while ((match = decisionRegex.exec(text)) !== null) {
+    if (match[1].trim()) inlineDecisions.push(match[1].trim());
+  }
+  const lineDecisionRegex = /(?:^|\n)\s*[-*]\s*\[DECISION\]\s*(.*?)(?=\n|$)/gi;
+  while ((match = lineDecisionRegex.exec(text)) !== null) {
+    if (match[1].trim()) inlineDecisions.push(match[1].trim());
+  }
+
+  const inlineFlags: string[] = [];
+  const flagRegex = /\[FLAG:\s*([^\]\n]+)\]/gi;
+  while ((match = flagRegex.exec(text)) !== null) {
+    if (match[1].trim()) inlineFlags.push(match[1].trim());
+  }
+
+  const inlineParking: string[] = [];
+  const parkingRegex = /\[PARKING[-_]LOT:\s*([^\]\n]+)\]/gi;
+  while ((match = parkingRegex.exec(text)) !== null) {
+    if (match[1].trim()) inlineParking.push(match[1].trim());
+  }
+  const lineParkingRegex = /(?:^|\n)\s*[-*]\s*\[PARKING\s*LOT\]\s*(.*?)(?=\n|$)/gi;
+  while ((match = lineParkingRegex.exec(text)) !== null) {
+    if (match[1].trim()) inlineParking.push(match[1].trim());
+  }
+
+  const unresolved = extractUnresolvedQuestions(text);
+  const conclusions = extractConclusions(text, 'Legacy', false);
+
+  return {
+    decisions: Array.from(new Set([...parsed.decisions, ...inlineDecisions])),
+    flags: Array.from(new Set([...parsed.flags, ...inlineFlags])),
+    parkingLot: Array.from(new Set([...parsed.parkingLot, ...inlineParking])),
+    unresolved: Array.from(new Set([...parsed.unresolved, ...unresolved])),
+    conclusions: Array.from(new Set([...parsed.conclusions, ...conclusions])),
+  };
+}
+
+/**
+ * Binds extracted facts to prevent unbounded growth.
+ * Limits each category to 50 most recent items and caps individual fact lengths to 500 characters.
+ */
+export function boundExtractedFacts(facts: ExtractedFacts): ExtractedFacts {
+  const limitList = (list: string[]) =>
+    list
+      .map(item => item.length > 500 ? item.substring(0, 497) + '...' : item)
+      .slice(-50);
+
+  return {
+    decisions: limitList(facts.decisions),
+    flags: limitList(facts.flags),
+    parkingLot: limitList(facts.parkingLot),
+    unresolved: limitList(facts.unresolved),
+    conclusions: limitList(facts.conclusions),
+  };
+}
+
+/**
  * Formats extracted facts into markdown block.
  */
 export function formatExtractedFacts(facts: ExtractedFacts): string {
@@ -199,11 +263,11 @@ export function formatExtractedFacts(facts: ExtractedFacts): string {
 }
 
 /**
- * Caps the narrative summary length to preserve bounded context.
+ * Caps the narrative summary length by truncating oldest part (start of string) to preserve bounded context.
  */
 export function enforceNarrativeLimit(narrative: string, maxChars = 5000): string {
   if (narrative.length > maxChars) {
-    return narrative.substring(0, maxChars - 40) + '\n... [NARRATIVE TRUNCATED DUE TO SIZE LIMIT]';
+    return '... [NARRATIVE TRUNCATED FROM START DUE TO SIZE LIMIT]\n' + narrative.substring(narrative.length - (maxChars - 60));
   }
   return narrative;
 }
@@ -217,14 +281,17 @@ export function createDeterministicSummary(
   previousSummary: string | null
 ): string {
   let previousNarrative = '';
-  let oldStructuredPart = '';
+  let oldFacts: ExtractedFacts = { decisions: [], flags: [], parkingLot: [], unresolved: [], conclusions: [] };
+
   if (previousSummary) {
     if (previousSummary.includes('### STRUCTURED FACTS')) {
       const parts = previousSummary.split('### STRUCTURED FACTS');
       previousNarrative = parts[0].trim();
-      oldStructuredPart = parts[1] || '';
+      const oldStructuredPart = parts[1] || '';
+      oldFacts = parseStructuredFacts(oldStructuredPart);
     } else {
       previousNarrative = previousSummary.trim();
+      oldFacts = extractFactsFromText(previousSummary, registeredSlugs);
     }
   }
 
@@ -240,7 +307,6 @@ export function createDeterministicSummary(
 
   const newNarrative = enforceNarrativeLimit(narrativeParts.join('\n'), 5000);
 
-  const oldFacts = parseStructuredFacts(oldStructuredPart);
   const newFacts = extractFactsFromMessages(messages, registeredSlugs);
 
   const mergedFacts: ExtractedFacts = {
@@ -251,7 +317,8 @@ export function createDeterministicSummary(
     conclusions: Array.from(new Set([...oldFacts.conclusions, ...newFacts.conclusions])),
   };
 
-  const formattedFacts = formatExtractedFacts(mergedFacts);
+  const boundedFacts = boundExtractedFacts(mergedFacts);
+  const formattedFacts = formatExtractedFacts(boundedFacts);
 
   let result = newNarrative;
   if (formattedFacts) {
@@ -283,18 +350,20 @@ export async function summarizeHistoryIfNeeded(
   const messagesToSummarize = messages.slice(startIndex, targetEndIndex);
 
   let previousNarrative = '';
-  let oldStructuredPart = '';
+  let oldFacts: ExtractedFacts = { decisions: [], flags: [], parkingLot: [], unresolved: [], conclusions: [] };
+
   if (currentSummary) {
     if (currentSummary.includes('### STRUCTURED FACTS')) {
       const parts = currentSummary.split('### STRUCTURED FACTS');
       previousNarrative = parts[0].trim();
-      oldStructuredPart = parts[1] || '';
+      const oldStructuredPart = parts[1] || '';
+      oldFacts = parseStructuredFacts(oldStructuredPart);
     } else {
       previousNarrative = currentSummary.trim();
+      oldFacts = extractFactsFromText(currentSummary, registeredSlugs);
     }
   }
 
-  const oldFacts = parseStructuredFacts(oldStructuredPart);
   const newFacts = extractFactsFromMessages(messagesToSummarize, registeredSlugs);
 
   const mergedFacts: ExtractedFacts = {
@@ -322,7 +391,6 @@ ${textToSummarize}`;
         throw new Error('Model returned empty summary');
       }
 
-      // Split the generated summary in case the model added structured facts
       let modelNarrative = generated;
       let modelStructuredPart = '';
       if (generated.includes('### STRUCTURED FACTS')) {
@@ -331,7 +399,6 @@ ${textToSummarize}`;
         modelStructuredPart = parts[1] || '';
       }
 
-      // Merge any facts from model structured output as well
       const modelFacts = parseStructuredFacts(modelStructuredPart);
       const fullyMergedFacts: ExtractedFacts = {
         decisions: Array.from(new Set([...mergedFacts.decisions, ...modelFacts.decisions])),
@@ -341,7 +408,8 @@ ${textToSummarize}`;
         conclusions: Array.from(new Set([...mergedFacts.conclusions, ...modelFacts.conclusions])),
       };
 
-      const formattedFacts = formatExtractedFacts(fullyMergedFacts);
+      const boundedFacts = boundExtractedFacts(fullyMergedFacts);
+      const formattedFacts = formatExtractedFacts(boundedFacts);
       const limitedNarrative = enforceNarrativeLimit(modelNarrative, 5000);
 
       newSummaryText = limitedNarrative;
