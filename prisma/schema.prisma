@@ -51,7 +51,7 @@ model Role {
   systemPrompt  String
   modelId       String?
   providerId    String?
-  provider      Provider?      @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  provider      Provider?      @relation(fields: [providerId], references: [id], onDelete: SetNull)
   color         String         // e.g. "#6366f1"
   icon          String         // e.g. emoji or icon identifier
   isBuiltIn     Boolean        @default(false)

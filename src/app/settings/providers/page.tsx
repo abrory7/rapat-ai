@@ -21,6 +21,7 @@ interface Provider {
   baseUrl?: string;
   hasApiKey: boolean;
   models: string[];
+  assignedRoleCount: number;
 }
 
 export default function ProvidersPage() {
@@ -141,13 +142,18 @@ export default function ProvidersPage() {
   };
 
   const handleDeleteProvider = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this provider? Roles referencing this provider will lose their AI configuration.')) {
+    const provider = providers.find((item) => item.id === id);
+    const assignedRoleCount = provider?.assignedRoleCount ?? 0;
+    const roleLabel = assignedRoleCount === 1 ? 'role' : 'roles';
+    if (!confirm(
+      `Are you sure you want to delete this provider? ${assignedRoleCount} ${roleLabel} will become unassigned.`
+    )) {
       return;
     }
     try {
       const res = await fetch(`/api/providers/${id}`, { method: 'DELETE' });
       if (res.ok) {
-        setProviders(providers.filter((p) => p.id !== id));
+        setProviders((current) => current.filter((p) => p.id !== id));
       } else {
         alert('Failed to delete provider.');
       }

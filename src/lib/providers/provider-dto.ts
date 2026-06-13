@@ -7,6 +7,9 @@ export type ProviderRecord = {
   models: string;
   createdAt: Date;
   updatedAt: Date;
+  _count?: {
+    roles: number;
+  };
 };
 
 function parseModels(models: string): string[] {
@@ -27,6 +30,7 @@ export function toProviderDto(provider: ProviderRecord) {
     type: provider.type,
     baseUrl: provider.baseUrl,
     models: parseModels(provider.models),
+    assignedRoleCount: provider._count?.roles ?? 0,
     hasApiKey: provider.apiKey.length > 0,
     createdAt: provider.createdAt,
     updatedAt: provider.updatedAt,
@@ -43,4 +47,3 @@ export function toProviderSummary(
     models: parseModels(provider.models),
   };
 }
-

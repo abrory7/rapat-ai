@@ -11,12 +11,14 @@ const provider = {
   models: '["model-a"]',
   createdAt: new Date('2026-01-01T00:00:00.000Z'),
   updatedAt: new Date('2026-01-02T00:00:00.000Z'),
+  _count: { roles: 3 },
 };
 
 test('provider DTO never exposes the stored API key', () => {
   const dto = toProviderDto(provider);
 
   assert.equal(dto.hasApiKey, true);
+  assert.equal(dto.assignedRoleCount, 3);
   assert.deepEqual(dto.models, ['model-a']);
   assert.equal('apiKey' in dto, false);
   assert.doesNotMatch(JSON.stringify(dto), /ciphertext/);
@@ -30,4 +32,3 @@ test('provider summary exposes only fields needed by role screens', () => {
     models: ['model-a'],
   });
 });
-

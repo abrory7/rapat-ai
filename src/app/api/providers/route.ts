@@ -7,7 +7,9 @@ import { normalizeBaseUrl } from '@/lib/providers/url-normalizer';
 
 export async function GET() {
   try {
-    const providers = await prisma.provider.findMany();
+    const providers = await prisma.provider.findMany({
+      include: { _count: { select: { roles: true } } },
+    });
     return NextResponse.json(providers.map(toProviderDto));
   } catch (error) {
     console.error('Failed to fetch providers:', error);
@@ -33,6 +35,7 @@ export async function POST(req: Request) {
         apiKey: encryptedKey,
         models: JSON.stringify(models),
       },
+      include: { _count: { select: { roles: true } } },
     });
     return NextResponse.json(toProviderDto(provider));
   } catch (error) {

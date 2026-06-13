@@ -4,11 +4,15 @@ import { encrypt } from '@/lib/crypto/encryption';
 import { toProviderDto } from '@/lib/providers/provider-dto';
 import { assertSafeProviderUrl } from '@/lib/providers/destination-policy';
 import { normalizeBaseUrl } from '@/lib/providers/url-normalizer';
+import { deleteProviderPreservingRoles } from '@/lib/providers/provider-deletion';
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
-    const provider = await prisma.provider.findUnique({ where: { id } });
+    const provider = await prisma.provider.findUnique({
+      where: { id },
+      include: { _count: { select: { roles: true } } },
+    });
     if (!provider) {
       return NextResponse.json({ error: 'Provider not found' }, { status: 404 });
     }
@@ -47,6 +51,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
         apiKey: encryptedKey,
         models: JSON.stringify(models),
       },
+      include: { _count: { select: { roles: true } } },
     });
 
     return NextResponse.json(toProviderDto(updated));
@@ -59,8 +64,8 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
 export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
-    await prisma.provider.delete({ where: { id } });
-    return NextResponse.json({ success: true });
+    const result = await deleteProviderPreservingRoles(prisma, id);
+    return NextResponse.json(result);
   } catch (error) {
     console.error('Failed to delete provider:', error);
     return NextResponse.json({ error: 'Failed to delete provider' }, { status: 500 });
