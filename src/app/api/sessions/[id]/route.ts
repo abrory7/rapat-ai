@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-import { isSessionActive } from '@/lib/orchestrator/engine';
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -26,18 +25,6 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 
     if (!session) {
       return NextResponse.json({ error: 'Session not found' }, { status: 404 });
-    }
-
-    // Defensive check: reset orphaned RUNNING or COMPILING sessions if their loop is inactive in memory
-    const isActive = isSessionActive(id);
-    if (!isActive && (session.status === 'RUNNING' || session.status === 'COMPILING')) {
-      const newStatus = session.status === 'COMPILING' ? 'ERROR' : 'PAUSED';
-      console.log(`[Orchestration] Resetting orphaned session ${id} status from ${session.status} to ${newStatus}`);
-      await prisma.session.update({
-        where: { id },
-        data: { status: newStatus },
-      });
-      session.status = newStatus;
     }
 
     return NextResponse.json(session);
