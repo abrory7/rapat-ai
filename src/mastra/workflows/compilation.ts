@@ -30,24 +30,39 @@ export function buildCompilationPrompt({
     const prefix = `[${m.sender}] (${dateStr}):\n`;
     const fullPart = prefix + m.content;
     const separatorLength = transcriptParts.length > 0 ? 2 : 0; // "\n\n"
-    
-    // Check if adding this message and the omission marker exceeds the limit
-    if (currentLength + separatorLength + fullPart.length + OMISSION_MARKER.length + 2 > MAX_CHARS) {
-       // We must include the omission marker. How much space is left for this message?
-       // The total budget minus what we already have, minus the separator and the marker length and its separator.
-       // It's exactly:
-       const allowedLength = MAX_CHARS - currentLength - separatorLength - OMISSION_MARKER.length - 2;
-       
-       if (allowedLength > prefix.length + 20) {
-         // There is enough space to at least include the prefix and a snippet of the content
-         const truncatedContent = m.content.substring(0, allowedLength - prefix.length - 16) + '... [TRUNCATED]';
-         transcriptParts.unshift(prefix + truncatedContent);
-       }
-       transcriptParts.unshift(OMISSION_MARKER);
-       break;
+
+    if (i === 0) {
+      // For the oldest message, we don't need OMISSION_MARKER since there are no older messages.
+      if (currentLength + separatorLength + fullPart.length > MAX_CHARS) {
+        const allowedLength = MAX_CHARS - currentLength - separatorLength;
+        if (allowedLength > prefix.length + 20) {
+          const truncatedContent = m.content.substring(0, allowedLength - prefix.length - 16) + '... [TRUNCATED]';
+          transcriptParts.unshift(prefix + truncatedContent);
+        } else if (currentLength === 0) {
+          // If the oldest message is the ONLY message and it doesn't fit at all, we still have to omit it
+          transcriptParts.unshift(OMISSION_MARKER);
+        } else {
+          // If we had other messages, and this oldest one doesn't fit at all, it's omitted
+          transcriptParts.unshift(OMISSION_MARKER);
+        }
+        break;
+      }
+      transcriptParts.unshift(fullPart);
+      currentLength += separatorLength + fullPart.length;
+    } else {
+      // For messages with older ones remaining, we must reserve space for OMISSION_MARKER
+      if (currentLength + separatorLength + fullPart.length + OMISSION_MARKER.length + 2 > MAX_CHARS) {
+        const allowedLength = MAX_CHARS - currentLength - separatorLength - OMISSION_MARKER.length - 2;
+        if (allowedLength > prefix.length + 20) {
+          const truncatedContent = m.content.substring(0, allowedLength - prefix.length - 16) + '... [TRUNCATED]';
+          transcriptParts.unshift(prefix + truncatedContent);
+        }
+        transcriptParts.unshift(OMISSION_MARKER);
+        break;
+      }
+      transcriptParts.unshift(fullPart);
+      currentLength += separatorLength + fullPart.length;
     }
-    transcriptParts.unshift(fullPart);
-    currentLength += separatorLength + fullPart.length;
   }
   
   const transcript = transcriptParts.join('\n\n');

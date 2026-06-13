@@ -700,7 +700,7 @@ describe('summarization integration in engine', () => {
       content: `Message ${i}`,
       createdAt: new Date()
     }));
-    
+
     const db = makePrismaMock({
       ...MINIMAL_SESSION,
       id: 'sess-sum',
@@ -712,7 +712,8 @@ describe('summarization integration in engine', () => {
     });
 
     let summaryPersisted = false;
-    let turnGenerated = false;
+    let activeAgentCalled = false;
+    let activeAgentPrompt = '';
 
     // We will intercept the update call to see if contextSummary was updated
     const originalUpdate = db.session.update;
@@ -725,20 +726,37 @@ describe('summarization integration in engine', () => {
 
     __setEngineDepForTest({
       prisma: db as any,
-      getMergedToolsForProject: async () => ({}),
-      createAgentFromRole: () => ({
-        stream: async () => {
-          turnGenerated = true;
-          // Return empty stream to exit loop naturally
-          return { textStream: (async function* () {})() };
+      getMergedToolsForProject: async () => ({ dummyTool: {} as any }),
+      compilePlanningDocument: async () => 'mocked doc',
+      createAgentFromRole: (args: any) => {
+        // If args.tools has dummyTool, it's the active agent
+        if (args.tools && args.tools.dummyTool) {
+          return {
+            stream: async (prompt: string) => {
+              activeAgentCalled = true;
+              activeAgentPrompt = prompt;
+              return { textStream: (async function* () {})() };
+            }
+          } as any;
         }
-      }) as any
+        // Otherwise it's the summarizer agent
+        return {
+          stream: async () => {
+            return {
+              textStream: (async function* () {
+                yield 'Model Generated Summary';
+              })()
+            };
+          }
+        } as any;
+      }
     });
 
     await runOrchestrationLoop('sess-sum');
-    
+
     assert.ok(summaryPersisted, 'Summary should be persisted');
-    assert.ok(turnGenerated, 'Turn should be generated after summarization');
+    assert.ok(activeAgentCalled, 'Active agent turn should be generated after summarization');
+    assert.ok(activeAgentPrompt.includes('Model Generated Summary'), 'Active agent should receive the persisted summary in its prompt');
   });
 
   it('does not fail the active turn if summarization persistence fails', async () => {
@@ -748,7 +766,7 @@ describe('summarization integration in engine', () => {
       content: `Message ${i}`,
       createdAt: new Date()
     }));
-    
+
     const db = makePrismaMock({
       ...MINIMAL_SESSION,
       id: 'sess-sum-fail',
@@ -759,7 +777,7 @@ describe('summarization integration in engine', () => {
       currentRoleSlug: 'engineer'
     });
 
-    let turnGenerated = false;
+    let activeAgentCalled = false;
 
     // Intercept update to throw on the summarization persistence
     const originalUpdate = db.session.update;
@@ -772,19 +790,34 @@ describe('summarization integration in engine', () => {
 
     __setEngineDepForTest({
       prisma: db as any,
-      getMergedToolsForProject: async () => ({}),
-      createAgentFromRole: () => ({
-        stream: async () => {
-          turnGenerated = true;
-          return { textStream: (async function* () {})() };
+      getMergedToolsForProject: async () => ({ dummyTool: {} as any }),
+      compilePlanningDocument: async () => 'mocked doc',
+      createAgentFromRole: (args: any) => {
+        // If args.tools has dummyTool, it's the active agent
+        if (args.tools && args.tools.dummyTool) {
+          return {
+            stream: async () => {
+              activeAgentCalled = true;
+              return { textStream: (async function* () {})() };
+            }
+          } as any;
         }
-      }) as any
+        // Otherwise it's the summarizer agent
+        return {
+          stream: async () => {
+            return {
+              textStream: (async function* () {
+                yield 'Model Generated Summary';
+              })()
+            };
+          }
+        } as any;
+      }
     });
 
     // It should not throw because the summarization catch block should handle it
     await runOrchestrationLoop('sess-sum-fail');
 
-    assert.ok(turnGenerated, 'Turn should still be generated despite persistence failure');
+    assert.ok(activeAgentCalled, 'Turn should still be generated despite persistence failure');
   });
 });
-

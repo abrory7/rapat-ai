@@ -26,6 +26,26 @@ describe('Compilation Workflow Prompt Builder', () => {
     assert.ok(!prompt.includes('[USER]')); // oldest, should be omitted
   });
 
+  it('should not truncate or add omission marker to a single message under 60,000 chars', () => {
+    const longContent = 'A'.repeat(59920);
+    const messages = [
+      { sender: 'USER', content: longContent, createdAt: new Date() }
+    ];
+
+    const prompt = buildCompilationPrompt({
+      topic: 'Test topic',
+      templateName: 'Test template',
+      roleGuidance: '',
+      uniqueDecisions: [],
+      uniqueParkingLot: [],
+      messages
+    });
+
+    assert.ok(!prompt.includes('omitted due to length constraints'));
+    assert.ok(!prompt.includes('[TRUNCATED]'));
+    assert.ok(prompt.includes(longContent));
+  });
+
   it('should preserve language from the topic (Indonesian)', () => {
     const prompt = buildCompilationPrompt({
       topic: 'Bagaimana cara membuat aplikasi',

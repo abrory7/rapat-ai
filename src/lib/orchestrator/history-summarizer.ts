@@ -45,7 +45,7 @@ export function createDeterministicSummary(
     }
 
     // Extract unresolved questions
-    const unresolvedRegex = /(?:^|\n)\s*[-*]\s*(?:\[UNRESOLVED.*?\]|\*\*Unresolved.*?\*\*|Unresolved.*?:\s*)(.*?)(?=\n|$)/gi;
+    const unresolvedRegex = /(?:^|\n)\s*[-*]?\s*(?:\[(?:UNRESOLVED|BELUM[_-]SELESAI|BELUM[_-]TERJAWAB|PERTANYAAN).*?\]|\*\*(?:Unresolved|Belum\s+Selesai|Belum\s+Terjawab|Pertanyaan).*?\*\*|(?:Unresolved|Belum\s+Selesai|Belum\s+Terjawab|Pertanyaan).*?:\s*)(.*?)(?=\n|$)/gi;
     const unresolved: string[] = [];
     let uMatch;
     while ((uMatch = unresolvedRegex.exec(msg.content)) !== null) {
@@ -56,7 +56,7 @@ export function createDeterministicSummary(
     }
 
     // Extract role conclusions
-    const conclusionRegex = /(?:^|\n)\s*[-*]\s*(?:\[CONCLUSION.*?\]|\*\*Conclusion.*?\*\*|Conclusion.*?:\s*)(.*?)(?=\n|$)/gi;
+    const conclusionRegex = /(?:^|\n)\s*[-*]?\s*(?:\[(?:CONCLUSION|KESIMPULAN).*?\]|\*\*(?:Conclusion|Kesimpulan).*?\*\*|(?:Conclusion|Kesimpulan).*?:\s*)(.*?)(?=\n|$)/gi;
     const conclusions: string[] = [];
     let cMatch;
     while ((cMatch = conclusionRegex.exec(msg.content)) !== null) {

@@ -72,4 +72,28 @@ describe('history-summarizer', () => {
     assert.ok(!result.newSummary.includes('Message 3'));
     assert.ok(result.newSummary.includes('Message 4'));
   });
+
+  it('should extract Indonesian and English unresolved/conclusion tags in deterministic summary', async () => {
+    const messages = Array.from({ length: 15 }, (_, i) => {
+      let content = `Message ${i}`;
+      if (i === 2) {
+        content += '\n- [BELUM_SELESAI] Pertanyaan bahasa Indonesia';
+      }
+      if (i === 3) {
+        content += '\nKesimpulan: Akhir dari kesepakatan';
+      }
+      return { sender: 'PM', content };
+    });
+
+    const result = await summarizeHistoryIfNeeded({
+      messages,
+      currentSummary: null,
+      summarizedMessageCount: 0,
+      registeredSlugs: ['PM']
+    });
+
+    assert.ok(result);
+    assert.ok(result.newSummary.includes('Pertanyaan bahasa Indonesia'));
+    assert.ok(result.newSummary.includes('Akhir dari kesepakatan'));
+  });
 });
