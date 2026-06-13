@@ -2,6 +2,68 @@ import { createAgentFromRole } from '../agents/factory';
 import { prisma } from '@/lib/db';
 import { parseResponse } from '@/lib/orchestrator/response-parser';
 
+export function buildCompilationPrompt({
+  topic,
+  templateName,
+  roleGuidance,
+  uniqueDecisions,
+  uniqueParkingLot,
+  messages,
+  contextSummary
+}: {
+  topic: string;
+  templateName: string;
+  roleGuidance: string;
+  uniqueDecisions: string[];
+  uniqueParkingLot: string[];
+  messages: Array<{ sender: string; content: string; createdAt: Date | string }>;
+  contextSummary?: string | null;
+}) {
+  let currentLength = 0;
+  const transcriptParts: string[] = [];
+  
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i];
+    const dateStr = m.createdAt instanceof Date ? m.createdAt.toLocaleTimeString() : new Date(m.createdAt).toLocaleTimeString();
+    const part = `[${m.sender}] (${dateStr}):\n${m.content}`;
+    if (currentLength + part.length > 60000) {
+       transcriptParts.unshift("[... older messages omitted due to length constraints ...]");
+       break;
+    }
+    transcriptParts.unshift(part);
+    currentLength += part.length;
+  }
+  
+  const transcript = transcriptParts.join('\n\n');
+
+  let prompt = `You are the Project Coordinator and Compiler. The discussion session for the topic "${topic}" (Template: "${templateName}") is now complete. 
+Your task is to review the accumulated decisions, parking lot items, context summary, and conversation transcript below, and compile a final, comprehensive, and professional **Planning & Strategy Document** in Markdown.\n\n`;
+
+  if (contextSummary) {
+    prompt += `### PREVIOUS DISCUSSION SUMMARY:\n${contextSummary}\n\n`;
+  }
+
+  prompt += `### ACCUMULATED DECISIONS:\n${uniqueDecisions.length > 0 ? uniqueDecisions.map((d) => `- ${d}`).join('\n') : 'None recorded.'}\n\n### PARKING LOT (DEFERRED ITEMS):\n${uniqueParkingLot.length > 0 ? uniqueParkingLot.map((p) => `- ${p}`).join('\n') : 'None recorded.'}\n\n### LATEST DISCUSSION TRANSCRIPT:\n${transcript}\n\n### COMPILATION GUIDELINES:
+1. **Lineup Roles to Integrate**:
+   This discussion involved the following roles. You must integrate their respective inputs:
+${roleGuidance}
+
+2. **Dynamic Document Structure**:
+   Structure the document logically using Markdown. The format must adapt to the topic and the participating roles. You should include:
+   - **Title**: A professional title derived from the topic.
+   - **Executive Summary / Overview**: Context, discussion goals, and high-level outcomes.
+   - **Core Domain Specifications**: Dedicated sections reflecting the contributions of the participating roles (e.g., if a Lead Architect was present, include System Architecture; if a Marketing Strategist was present, include Marketing Strategy & Brand Positioning, etc.).
+   - **Action Plan & Implementation Steps**: A concrete breakdown of next steps, technical tasks, or campaign milestones.
+   - **Deferred Items & Future Phases**: Incorporate parking lot items as areas for future consideration.
+
+3. **Critical Rules**:
+   - Keep the information concise, but DO NOT lose any technical detail, specific requirements, code schemas, design mockups, or strategic decisions discussed.
+   - The final planning document MUST be written in the primary language of the topic: "${topic}".
+   - Output ONLY the final markdown content. Do not include chat greetings or conversational remarks.`;
+
+  return prompt;
+}
+
 /**
  * Orchestrates the final Project Manager compilation step. 
  * Gathers decisions, parking lot, and transcripts, and compiles the final Planning Document.
@@ -72,44 +134,21 @@ async function compilePlanningDocumentInternal(sessionId: string): Promise<strin
   const uniqueDecisions = Array.from(new Set(decisions));
   const uniqueParkingLot = Array.from(new Set(parkingLot));
 
-  // Build formatted transcript
-  const transcript = session.messages
-    .map((m) => `[${m.sender}] (${new Date(m.createdAt).toLocaleTimeString()}):\n${m.content}`)
-    .join('\n\n');
-
   const roleGuidance = session.template.templateRoles
     .map((tr) => `- **${tr.role.name} (@${tr.role.slug})**: Synthesize and integrate their specific domain insights, designs, and decisions.`)
     .join('\n');
 
-  const compilationPrompt = `You are the Project Coordinator and Compiler. The discussion session for the topic "${session.topic}" (Template: "${session.template.name}") is now complete. 
-Your task is to review the accumulated decisions, parking lot items, and full conversation transcript below, and compile a final, comprehensive, and professional **Planning & Strategy Document** in Markdown.
 
-### ACCUMULATED DECISIONS:
-${uniqueDecisions.length > 0 ? uniqueDecisions.map((d) => `- ${d}`).join('\n') : 'None recorded.'}
 
-### PARKING LOT (DEFERRED ITEMS):
-${uniqueParkingLot.length > 0 ? uniqueParkingLot.map((p) => `- ${p}`).join('\n') : 'None recorded.'}
-
-### DISCUSSION TRANSCRIPT:
-${transcript}
-
-### COMPILATION GUIDELINES:
-1. **Lineup Roles to Integrate**:
-   This discussion involved the following roles. You must integrate their respective inputs:
-${roleGuidance}
-
-2. **Dynamic Document Structure**:
-   Structure the document logically using Markdown. The format must adapt to the topic and the participating roles. You should include:
-   - **Title**: A professional title derived from the topic.
-   - **Executive Summary / Overview**: Context, discussion goals, and high-level outcomes.
-   - **Core Domain Specifications**: Dedicated sections reflecting the contributions of the participating roles (e.g., if a Lead Architect was present, include System Architecture; if a Marketing Strategist was present, include Marketing Strategy & Brand Positioning, etc.).
-   - **Action Plan & Implementation Steps**: A concrete breakdown of next steps, technical tasks, or campaign milestones.
-   - **Deferred Items & Future Phases**: Incorporate parking lot items as areas for future consideration.
-
-3. **Critical Rules**:
-   - Keep the information concise, but DO NOT lose any technical detail, specific requirements, code schemas, design mockups, or strategic decisions discussed.
-   - The final planning document MUST be written entirely in English.
-   - Output ONLY the final markdown content. Do not include chat greetings or conversational remarks.`;
+  const compilationPrompt = buildCompilationPrompt({
+    topic: session.topic,
+    templateName: session.template.name,
+    roleGuidance,
+    uniqueDecisions,
+    uniqueParkingLot,
+    messages: session.messages,
+    contextSummary: session.contextSummary,
+  });
 
   // Instantiate PM Agent
   const pmAgent = createAgentFromRole({
