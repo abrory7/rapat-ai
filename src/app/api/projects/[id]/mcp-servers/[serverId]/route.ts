@@ -6,6 +6,31 @@ import {
   mergeEnvironmentUpdate,
   toMcpServerDto,
 } from '@/lib/mcp/environment-secrets';
+import { parseMcpServerUpdate } from '@/lib/mcp/config-schema';
+import { invalidateProjectMcpAfter } from '@/mastra/mcp/client-manager';
+import { ZodError } from 'zod';
+
+function parseStoredArgs(args: string | null): string[] {
+  if (!args) return [];
+  try {
+    const parsed: unknown = JSON.parse(args);
+    return Array.isArray(parsed)
+      ? parsed.filter((value): value is string => typeof value === 'string')
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function invalidMcpConfig() {
+  return NextResponse.json(
+    {
+      code: 'INVALID_MCP_CONFIG',
+      error: 'Invalid MCP server configuration.',
+    },
+    { status: 400 }
+  );
+}
 
 export async function PUT(
   req: Request,
@@ -13,8 +38,7 @@ export async function PUT(
 ) {
   try {
     const { id, serverId } = await params;
-    const body = await req.json();
-    const { name, type, command, url, args, env, removedEnvKeys, enabled } = body;
+    const body: unknown = await req.json();
 
     const config = await prisma.mcpServerConfig.findFirst({
       where: { id: serverId, projectId: id },
@@ -22,36 +46,61 @@ export async function PUT(
     if (!config) {
       return NextResponse.json({ error: 'MCP server config not found' }, { status: 404 });
     }
+    const input = parseMcpServerUpdate(body, {
+      name: config.name,
+      type: config.type,
+      command: config.command,
+      url: config.url,
+      args: parseStoredArgs(config.args),
+      enabled: config.enabled,
+    });
+    const nextType = input.type ?? config.type;
 
     const nextEnvironment =
-      env !== undefined || Array.isArray(removedEnvKeys)
+      input.env !== undefined || input.removedEnvKeys !== undefined
         ? mergeEnvironmentUpdate(
             decodeEnvironment(config.env),
-            env || {},
-            Array.isArray(removedEnvKeys) ? removedEnvKeys : []
+            input.env || {},
+            input.removedEnvKeys || []
           )
         : null;
 
-    const updated = await prisma.mcpServerConfig.update({
-      where: { id: serverId },
-      data: {
-        name: name ?? config.name,
-        type: type ?? config.type,
-        command: command !== undefined ? command : config.command,
-        url: url !== undefined ? url : config.url,
-        args: args !== undefined ? (args ? JSON.stringify(args) : null) : config.args,
-        env:
-          nextEnvironment === null
-            ? config.env
-            : Object.keys(nextEnvironment).length > 0
-              ? encodeEnvironment(nextEnvironment)
+    const updated = await invalidateProjectMcpAfter(id, () =>
+      prisma.mcpServerConfig.update({
+        where: { id: serverId },
+        data: {
+          name: input.name ?? config.name,
+          type: nextType,
+          command:
+            nextType === 'stdio'
+              ? input.command ?? config.command
               : null,
-        enabled: enabled !== undefined ? enabled : config.enabled,
-      },
-    });
+          url:
+            nextType === 'sse'
+              ? input.url ?? config.url
+              : null,
+          args:
+            nextType === 'stdio'
+              ? input.args !== undefined
+                ? JSON.stringify(input.args)
+                : config.args
+              : null,
+          env:
+            nextEnvironment === null
+              ? config.env
+              : Object.keys(nextEnvironment).length > 0
+                ? encodeEnvironment(nextEnvironment)
+                : null,
+          enabled: input.enabled ?? config.enabled,
+        },
+      })
+    );
 
     return NextResponse.json(toMcpServerDto(updated));
   } catch (error) {
+    if (error instanceof ZodError || error instanceof SyntaxError) {
+      return invalidMcpConfig();
+    }
     console.error('Failed to update MCP config:', error);
     return NextResponse.json({ error: 'Failed to update MCP config' }, { status: 500 });
   }
@@ -70,7 +119,9 @@ export async function DELETE(
       return NextResponse.json({ error: 'MCP server config not found' }, { status: 404 });
     }
 
-    await prisma.mcpServerConfig.delete({ where: { id: serverId } });
+    await invalidateProjectMcpAfter(id, () =>
+      prisma.mcpServerConfig.delete({ where: { id: serverId } })
+    );
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Failed to delete MCP config:', error);

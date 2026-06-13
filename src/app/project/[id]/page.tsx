@@ -11,6 +11,7 @@ import McpServerForm from '@/components/project/McpServerForm';
 import styles from '@/app/settings/Settings.module.css';
 import formStyles from '@/components/settings/Form.module.css';
 import detailStyles from './ProjectDetail.module.css';
+import { toMcpMutationPayload } from '@/lib/mcp/request-payload';
 
 interface McpServer {
   id: string;
@@ -194,7 +195,7 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
       const res = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(toMcpMutationPayload(formData, isEdit)),
       });
 
       if (res.ok) {

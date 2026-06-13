@@ -1,10 +1,39 @@
-import { MCPClient } from '@mastra/mcp';
+import { MCPClient, type MastraMCPServerDefinition } from '@mastra/mcp';
 import { prisma } from '@/lib/db';
 import { allTools } from '../tools';
 import { decodeEnvironment } from '@/lib/mcp/environment-secrets';
 
 // Cache client managers per project to reuse connections
 const mcpClientCache = new Map<string, MCPClient>();
+export const BUILT_IN_TOOL_NAMES = new Set(Object.keys(allTools));
+
+export function mergeCustomTools<TBuiltIn, TCustom>(
+  builtInTools: Record<string, TBuiltIn>,
+  customTools: Record<string, TCustom>,
+  log: (message: string) => void = console.warn
+): Record<string, TBuiltIn | TCustom> {
+  const mergedTools: Record<string, TBuiltIn | TCustom> = { ...builtInTools };
+
+  for (const [name, tool] of Object.entries(customTools)) {
+    if (BUILT_IN_TOOL_NAMES.has(name) || name in builtInTools) {
+      log(`Skipped custom MCP tool "${name}" because it collides with a built-in tool.`);
+      continue;
+    }
+    mergedTools[name] = tool;
+  }
+
+  return mergedTools;
+}
+
+export async function invalidateProjectMcpAfter<T>(
+  projectId: string,
+  mutation: () => Promise<T>,
+  disconnect: (projectId: string) => Promise<void> = disconnectProjectMcp
+): Promise<T> {
+  const result = await mutation();
+  await disconnect(projectId);
+  return result;
+}
 
 /**
  * Creates or retrieves a cached MCPClient instance for the project, configured with custom MCP servers.
@@ -22,12 +51,15 @@ export async function getMcpClientForProject(projectId: string): Promise<MCPClie
     return null;
   }
 
-  const servers: Record<string, any> = {};
+  const servers: Record<string, MastraMCPServerDefinition> = {};
   for (const config of configs) {
     if (config.type === 'stdio' && config.command) {
       let parsedArgs: string[] = [];
       try {
-        parsedArgs = config.args ? JSON.parse(config.args) : [];
+        const parsed: unknown = config.args ? JSON.parse(config.args) : [];
+        parsedArgs = Array.isArray(parsed)
+          ? parsed.filter((value): value is string => typeof value === 'string')
+          : [];
       } catch {
         parsedArgs = [];
       }
@@ -44,7 +76,7 @@ export async function getMcpClientForProject(projectId: string): Promise<MCPClie
         servers[config.name] = {
           url: new URL(config.url),
         };
-      } catch (e) {
+      } catch {
         console.error(`Invalid URL for SSE MCP server "${config.name}":`, config.url);
       }
     }
@@ -66,16 +98,18 @@ export async function getMcpClientForProject(projectId: string): Promise<MCPClie
 /**
  * Merges built-in workspace tools with any custom tools exposed by the configured custom MCP servers.
  */
-export async function getMergedToolsForProject(projectId: string): Promise<Record<string, any>> {
+export async function getMergedToolsForProject(
+  projectId: string
+): Promise<Record<string, unknown>> {
   // Built-in workspace tools
-  const mergedTools: Record<string, any> = { ...allTools };
+  const mergedTools: Record<string, unknown> = { ...allTools };
 
   try {
     const mcpClient = await getMcpClientForProject(projectId);
     if (mcpClient) {
       // Connect and query tools from the custom MCP servers
       const customTools = await mcpClient.listTools();
-      Object.assign(mergedTools, customTools);
+      return mergeCustomTools(mergedTools, customTools);
     }
   } catch (error) {
     console.error(`Error connecting to custom MCP servers for project ${projectId}:`, error);
