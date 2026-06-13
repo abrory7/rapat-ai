@@ -21,17 +21,33 @@ export function buildCompilationPrompt({
 }) {
   let currentLength = 0;
   const transcriptParts: string[] = [];
+  const OMISSION_MARKER = "[... older messages omitted due to length constraints ...]";
+  const MAX_CHARS = 60000;
   
   for (let i = messages.length - 1; i >= 0; i--) {
     const m = messages[i];
     const dateStr = m.createdAt instanceof Date ? m.createdAt.toLocaleTimeString() : new Date(m.createdAt).toLocaleTimeString();
-    const part = `[${m.sender}] (${dateStr}):\n${m.content}`;
-    if (currentLength + part.length > 60000) {
-       transcriptParts.unshift("[... older messages omitted due to length constraints ...]");
+    const prefix = `[${m.sender}] (${dateStr}):\n`;
+    const fullPart = prefix + m.content;
+    const separatorLength = transcriptParts.length > 0 ? 2 : 0; // "\n\n"
+    
+    // Check if adding this message and the omission marker exceeds the limit
+    if (currentLength + separatorLength + fullPart.length + OMISSION_MARKER.length + 2 > MAX_CHARS) {
+       // We must include the omission marker. How much space is left for this message?
+       // The total budget minus what we already have, minus the separator and the marker length and its separator.
+       // It's exactly:
+       const allowedLength = MAX_CHARS - currentLength - separatorLength - OMISSION_MARKER.length - 2;
+       
+       if (allowedLength > prefix.length + 20) {
+         // There is enough space to at least include the prefix and a snippet of the content
+         const truncatedContent = m.content.substring(0, allowedLength - prefix.length - 16) + '... [TRUNCATED]';
+         transcriptParts.unshift(prefix + truncatedContent);
+       }
+       transcriptParts.unshift(OMISSION_MARKER);
        break;
     }
-    transcriptParts.unshift(part);
-    currentLength += part.length;
+    transcriptParts.unshift(fullPart);
+    currentLength += separatorLength + fullPart.length;
   }
   
   const transcript = transcriptParts.join('\n\n');

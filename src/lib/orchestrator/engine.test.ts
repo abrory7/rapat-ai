@@ -126,8 +126,8 @@ function makePrismaMock(sessionRecord: any) {
       },
     },
     provider: {
-      findFirst: async () => null,
-      findUnique: async () => null,
+      findFirst: async () => FAKE_PROVIDER,
+      findUnique: async () => FAKE_PROVIDER,
     },
     _messages: messages,
     _store: store,
@@ -690,3 +690,101 @@ describe('stable orchestration command errors', () => {
     assert.equal(db._store['sess-retry'].status, 'ERROR');
   });
 });
+
+describe('summarization integration in engine', () => {
+  it('persists summary and uses it on next turn', async () => {
+    // Generate 15 messages so summarize triggers
+    const messages = Array.from({ length: 15 }, (_, i) => ({
+      id: `msg-${i}`,
+      sender: i === 14 ? 'USER' : 'pm',
+      content: `Message ${i}`,
+      createdAt: new Date()
+    }));
+    
+    const db = makePrismaMock({
+      ...MINIMAL_SESSION,
+      id: 'sess-sum',
+      status: 'RUNNING',
+      contextSummary: null,
+      summarizedMessageCount: 0,
+      messages,
+      currentRoleSlug: 'engineer'
+    });
+
+    let summaryPersisted = false;
+    let turnGenerated = false;
+
+    // We will intercept the update call to see if contextSummary was updated
+    const originalUpdate = db.session.update;
+    db.session.update = async (args: any) => {
+      if (args.data && args.data.contextSummary !== undefined) {
+        summaryPersisted = true;
+      }
+      return originalUpdate.call(db.session, args);
+    };
+
+    __setEngineDepForTest({
+      prisma: db as any,
+      getMergedToolsForProject: async () => ({}),
+      createAgentFromRole: () => ({
+        stream: async () => {
+          turnGenerated = true;
+          // Return empty stream to exit loop naturally
+          return { textStream: (async function* () {})() };
+        }
+      }) as any
+    });
+
+    await runOrchestrationLoop('sess-sum');
+    
+    assert.ok(summaryPersisted, 'Summary should be persisted');
+    assert.ok(turnGenerated, 'Turn should be generated after summarization');
+  });
+
+  it('does not fail the active turn if summarization persistence fails', async () => {
+    const messages = Array.from({ length: 15 }, (_, i) => ({
+      id: `msg-${i}`,
+      sender: i === 14 ? 'USER' : 'pm',
+      content: `Message ${i}`,
+      createdAt: new Date()
+    }));
+    
+    const db = makePrismaMock({
+      ...MINIMAL_SESSION,
+      id: 'sess-sum-fail',
+      status: 'RUNNING',
+      contextSummary: null,
+      summarizedMessageCount: 0,
+      messages,
+      currentRoleSlug: 'engineer'
+    });
+
+    let turnGenerated = false;
+
+    // Intercept update to throw on the summarization persistence
+    const originalUpdate = db.session.update;
+    db.session.update = async (args: any) => {
+      if (args.data && args.data.contextSummary !== undefined) {
+        throw new Error('Database summarization persistence failed');
+      }
+      return originalUpdate.call(db.session, args);
+    };
+
+    __setEngineDepForTest({
+      prisma: db as any,
+      getMergedToolsForProject: async () => ({}),
+      createAgentFromRole: () => ({
+        stream: async () => {
+          turnGenerated = true;
+          return { textStream: (async function* () {})() };
+        }
+      }) as any
+    });
+
+    // It should not throw because the summarization catch block should handle it
+    await runOrchestrationLoop('sess-sum-fail');
+
+    assert.ok(turnGenerated, 'Turn should still be generated despite persistence failure');
+  });
+});
+
