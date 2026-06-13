@@ -116,6 +116,8 @@ model Session {
   currentRoleSlug  String?
   currentRound     Int                @default(1)
   planningDocument String?            // Markdown text of compiled output
+  runToken          String?
+  leaseExpiresAt    DateTime?
   createdAt        DateTime           @default(now())
   updatedAt        DateTime           @updatedAt
   messages         Message[]

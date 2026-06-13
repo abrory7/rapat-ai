@@ -7,9 +7,32 @@ import { buildContext } from './context-builder';
 import { parseResponse } from './response-parser';
 import { getClosedRoles, getNextRoleAndRound } from './state-machine';
 import { compilePlanningDocument } from '@/mastra/workflows/compilation';
+import {
+  acquireSessionLease,
+  heartbeatSessionLease,
+  releaseSessionLease,
+  SESSION_HEARTBEAT_MS,
+} from './session-lease';
 
 // Simple in-memory registry of active stream listeners
 const activeListeners = new Map<string, Set<(data: any) => void>>();
+
+export type OrchestrationErrorCode =
+  | 'SESSION_NOT_FOUND'
+  | 'SESSION_ALREADY_ACTIVE'
+  | 'INVALID_SESSION_STATE'
+  | 'COMPILATION_FAILED';
+
+export class OrchestrationCommandError extends Error {
+  constructor(
+    public readonly code: OrchestrationErrorCode,
+    message: string,
+    options?: ErrorOptions
+  ) {
+    super(message, options);
+    this.name = 'OrchestrationCommandError';
+  }
+}
 
 export function registerSessionListener(sessionId: string, callback: (data: any) => void) {
   const listeners = activeListeners.get(sessionId) ?? new Set<(data: any) => void>();
@@ -50,6 +73,7 @@ const engineDeps = {
   getMergedToolsForProject,
   compilePlanningDocument,
   delayMs: isTest ? 0 : 2500,
+  heartbeatIntervalMs: SESSION_HEARTBEAT_MS,
 };
 
 /** @internal Test-only: override specific engine dependencies. */
@@ -66,10 +90,11 @@ export function __resetEngineDepForTest(): void {
   engineDeps.getMergedToolsForProject = getMergedToolsForProject;
   engineDeps.compilePlanningDocument = compilePlanningDocument;
   engineDeps.delayMs = isTest ? 0 : 2500;
+  engineDeps.heartbeatIntervalMs = SESSION_HEARTBEAT_MS;
 }
 
 // In-memory registry to prevent duplicate concurrent orchestration loops.
-const activeLoops = new Set<string>();
+const activeLoops = new Map<string, string | null>();
 
 export function isSessionActive(sessionId: string): boolean {
   return activeLoops.has(sessionId);
@@ -93,36 +118,59 @@ export async function startSession(sessionId: string): Promise<void> {
   });
 
   if (!session) {
-    throw new Error('Session not found');
+    throw new OrchestrationCommandError(
+      'SESSION_NOT_FOUND',
+      'Session not found.'
+    );
   }
 
-  // M4.1: Guard against restarting already-active or completed sessions.
   if (session.status === 'RUNNING' || session.status === 'COMPILING') {
-    return;
+    throw new OrchestrationCommandError(
+      'SESSION_ALREADY_ACTIVE',
+      'This session already has an active orchestration command.'
+    );
   }
   if (session.status === 'COMPLETED') {
-    throw new Error(
+    throw new OrchestrationCommandError(
+      'INVALID_SESSION_STATE',
       'Cannot restart a completed session. Create a new discussion session instead.'
     );
   }
 
   const defaultFlow = JSON.parse(session.template.defaultFlow) as string[];
   if (defaultFlow.length === 0) {
-    throw new Error('Discussion template has no configured roles.');
+    throw new OrchestrationCommandError(
+      'INVALID_SESSION_STATE',
+      'Discussion template has no configured roles.'
+    );
   }
 
-  // Start with the first role in default flow
-  await engineDeps.prisma.session.update({
-    where: { id: sessionId },
-    data: {
-      status: 'RUNNING',
-      currentRoleSlug: defaultFlow[0],
-      currentRound: 1,
-    },
-  });
+  const leaseStore = engineDeps.prisma as unknown as Parameters<
+    typeof acquireSessionLease
+  >[0];
+  const runToken = await acquireSessionLease(leaseStore, sessionId);
+  if (!runToken) {
+    throw new OrchestrationCommandError(
+      'SESSION_ALREADY_ACTIVE',
+      'This session is already running in another process.'
+    );
+  }
 
-  // Start the background loop
-  runOrchestrationLoop(sessionId).catch((err) => {
+  try {
+    await engineDeps.prisma.session.update({
+      where: { id: sessionId },
+      data: {
+        status: 'RUNNING',
+        currentRoleSlug: defaultFlow[0],
+        currentRound: 1,
+      },
+    });
+  } catch (error: unknown) {
+    await releaseSessionLease(leaseStore, sessionId, runToken);
+    throw error;
+  }
+
+  runOrchestrationLoop(sessionId, runToken).catch((err) => {
     console.error(`Orchestration loop error for session ${sessionId}:`, err);
   });
 }
@@ -130,20 +178,76 @@ export async function startSession(sessionId: string): Promise<void> {
 /**
  * Main supervisor autopilot loop. Processes turns sequentially.
  */
-export async function runOrchestrationLoop(sessionId: string): Promise<void> {
-  // M2.1-M2.2: Prevent duplicate concurrent loops for the same session.
-  if (activeLoops.has(sessionId)) {
+export async function runOrchestrationLoop(
+  sessionId: string,
+  acquiredRunToken?: string
+): Promise<void> {
+  // Keep the local registry as a fast-path optimization. The database lease is
+  // the authoritative guard across processes and restarts.
+  if (activeLoops.has(sessionId) && !acquiredRunToken) {
     console.warn(`[Orchestration] Duplicate loop for session ${sessionId} blocked.`);
     return;
   }
-  activeLoops.add(sessionId);
+  if (activeLoops.has(sessionId) && acquiredRunToken) {
+    console.warn(
+      `[Orchestration] Database lease takeover superseded the local loop for session ${sessionId}.`
+    );
+  }
+  activeLoops.set(sessionId, acquiredRunToken ?? null);
 
   let loopSafetyCount = 0;
   const maxSafetyTurns = 50;
+  let runToken: string | null = acquiredRunToken ?? null;
+  let leaseIsValid = true;
+  let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+  let heartbeatInFlight = false;
 
-  // M2.3: Always clean up activeLoops in finally.
   try {
+    const leaseStore = engineDeps.prisma as unknown as Parameters<
+      typeof acquireSessionLease
+    >[0];
+    if (!runToken) {
+      runToken = await acquireSessionLease(leaseStore, sessionId);
+      if (!runToken) {
+        console.warn(
+          `[Orchestration] Persistent lease for session ${sessionId} is already owned.`
+        );
+        return;
+      }
+      activeLoops.set(sessionId, runToken);
+    }
+
+    heartbeatTimer = setInterval(() => {
+      if (heartbeatInFlight || !leaseIsValid || !runToken) return;
+      heartbeatInFlight = true;
+      void heartbeatSessionLease(leaseStore, sessionId, runToken)
+        .then((renewed) => {
+          if (!renewed) {
+            leaseIsValid = false;
+            if (heartbeatTimer) clearInterval(heartbeatTimer);
+          }
+        })
+        .catch((error: unknown) => {
+          leaseIsValid = false;
+          if (heartbeatTimer) clearInterval(heartbeatTimer);
+          console.error(
+            `[Orchestration] Failed to renew lease for session ${sessionId}:`,
+            error
+          );
+        })
+        .finally(() => {
+          heartbeatInFlight = false;
+        });
+    }, engineDeps.heartbeatIntervalMs);
+
     while (loopSafetyCount < maxSafetyTurns) {
+      if (!leaseIsValid) {
+        console.warn(
+          `[Orchestration] Lease for session ${sessionId} was lost. Stopping loop.`
+        );
+        break;
+      }
+
       // 1. Fetch current session state
       const session = await engineDeps.prisma.session.findUnique({
         where: { id: sessionId },
@@ -309,12 +413,20 @@ export async function runOrchestrationLoop(sessionId: string): Promise<void> {
 
         // Stream text to listener/SSE
         for await (const chunk of stream.textStream) {
+          if (!leaseIsValid) break;
           contentResult += chunk;
           notifyListener(sessionId, { type: 'text-chunk', chunk, roleSlug: role.slug });
         }
 
         // Wait for any running tool executions to finish
         await stream.text;
+
+        if (!leaseIsValid) {
+          console.warn(
+            `[Orchestration] Lease for session ${sessionId} was lost during generation.`
+          );
+          break;
+        }
         
         // Capture tool calls
         const toolCalls = await stream.toolCalls;
@@ -434,8 +546,23 @@ export async function runOrchestrationLoop(sessionId: string): Promise<void> {
       loopSafetyCount++;
     }
   } finally {
-    // M2.3: Always remove from activeLoops so subsequent starts are allowed.
-    activeLoops.delete(sessionId);
+    if (heartbeatTimer) clearInterval(heartbeatTimer);
+    if (runToken) {
+      const leaseStore = engineDeps.prisma as unknown as Parameters<
+        typeof releaseSessionLease
+      >[0];
+      try {
+        await releaseSessionLease(leaseStore, sessionId, runToken);
+      } catch (error: unknown) {
+        console.error(
+          `[Orchestration] Failed to release lease for session ${sessionId}:`,
+          error
+        );
+      }
+    }
+    if (activeLoops.get(sessionId) === runToken) {
+      activeLoops.delete(sessionId);
+    }
   }
 }
 
@@ -443,10 +570,31 @@ export async function runOrchestrationLoop(sessionId: string): Promise<void> {
  * Pauses an active session.
  */
 export async function pauseSession(sessionId: string): Promise<void> {
-  await engineDeps.prisma.session.update({
-    where: { id: sessionId },
+  const result = await engineDeps.prisma.session.updateMany({
+    where: {
+      id: sessionId,
+      status: 'RUNNING',
+    },
     data: { status: 'PAUSED' },
   });
+  if (result.count === 0) {
+    const session = await engineDeps.prisma.session.findUnique({
+      where: { id: sessionId },
+      select: { status: true },
+    });
+    if (!session) {
+      throw new OrchestrationCommandError(
+        'SESSION_NOT_FOUND',
+        'Session not found.'
+      );
+    }
+    throw new OrchestrationCommandError(
+      session.status === 'COMPILING'
+        ? 'SESSION_ALREADY_ACTIVE'
+        : 'INVALID_SESSION_STATE',
+      `Cannot pause a session while it is ${session.status}.`
+    );
+  }
   notifyListener(sessionId, { type: 'status', status: 'PAUSED' });
 }
 
@@ -460,20 +608,43 @@ export async function resumeSession(sessionId: string): Promise<void> {
     select: { status: true },
   });
   if (!session) {
-    throw new Error('Session not found');
+    throw new OrchestrationCommandError(
+      'SESSION_NOT_FOUND',
+      'Session not found.'
+    );
   }
   if (session.status !== 'PAUSED') {
-    return;
+    throw new OrchestrationCommandError(
+      session.status === 'RUNNING' || session.status === 'COMPILING'
+        ? 'SESSION_ALREADY_ACTIVE'
+        : 'INVALID_SESSION_STATE',
+      `Cannot resume a session while it is ${session.status}.`
+    );
   }
 
-  await engineDeps.prisma.session.update({
-    where: { id: sessionId },
-    data: { status: 'RUNNING' },
-  });
+  const leaseStore = engineDeps.prisma as unknown as Parameters<
+    typeof acquireSessionLease
+  >[0];
+  const runToken = await acquireSessionLease(leaseStore, sessionId);
+  if (!runToken) {
+    throw new OrchestrationCommandError(
+      'SESSION_ALREADY_ACTIVE',
+      'This session is already running in another process.'
+    );
+  }
+
+  try {
+    await engineDeps.prisma.session.update({
+      where: { id: sessionId },
+      data: { status: 'RUNNING' },
+    });
+  } catch (error: unknown) {
+    await releaseSessionLease(leaseStore, sessionId, runToken);
+    throw error;
+  }
   notifyListener(sessionId, { type: 'status', status: 'RUNNING' });
   
-  // Kick off the loop again
-  runOrchestrationLoop(sessionId).catch((err) => {
+  runOrchestrationLoop(sessionId, runToken).catch((err) => {
     console.error(`Orchestration loop resume error for session ${sessionId}:`, err);
   });
 }
@@ -488,16 +659,37 @@ export async function stopSession(sessionId: string): Promise<void> {
     select: { status: true },
   });
   if (!session) {
-    throw new Error('Session not found');
+    throw new OrchestrationCommandError(
+      'SESSION_NOT_FOUND',
+      'Session not found.'
+    );
   }
-  if (session.status === 'COMPLETED' || session.status === 'COMPILING') {
-    return;
+  if (session.status === 'COMPILING') {
+    throw new OrchestrationCommandError(
+      'SESSION_ALREADY_ACTIVE',
+      'This session is already compiling.'
+    );
+  }
+  if (session.status !== 'RUNNING' && session.status !== 'PAUSED') {
+    throw new OrchestrationCommandError(
+      'INVALID_SESSION_STATE',
+      `Cannot compile a session while it is ${session.status}.`
+    );
   }
 
-  await engineDeps.prisma.session.update({
-    where: { id: sessionId },
+  const transition = await engineDeps.prisma.session.updateMany({
+    where: {
+      id: sessionId,
+      status: session.status,
+    },
     data: { status: 'COMPILING' },
   });
+  if (transition.count === 0) {
+    throw new OrchestrationCommandError(
+      'SESSION_ALREADY_ACTIVE',
+      'The session state changed before compilation could start.'
+    );
+  }
   notifyListener(sessionId, { type: 'status', status: 'COMPILING', currentRoleSlug: null, reason: 'Forced stop' });
 
   try {
@@ -513,6 +705,11 @@ export async function stopSession(sessionId: string): Promise<void> {
       type: 'error',
       error: `Forced stop compilation error: ${err.message}`,
     });
+    throw new OrchestrationCommandError(
+      'COMPILATION_FAILED',
+      `Compilation failed: ${err.message || err}`,
+      { cause: err }
+    );
   }
 }
 
@@ -525,13 +722,33 @@ export async function retryCompileSession(sessionId: string): Promise<void> {
     select: { status: true },
   });
   if (!session) {
-    throw new Error('Session not found');
+    throw new OrchestrationCommandError(
+      'SESSION_NOT_FOUND',
+      'Session not found.'
+    );
+  }
+  if (session.status !== 'ERROR') {
+    throw new OrchestrationCommandError(
+      session.status === 'COMPILING'
+        ? 'SESSION_ALREADY_ACTIVE'
+        : 'INVALID_SESSION_STATE',
+      `Cannot retry compilation while the session is ${session.status}.`
+    );
   }
 
-  await engineDeps.prisma.session.update({
-    where: { id: sessionId },
+  const transition = await engineDeps.prisma.session.updateMany({
+    where: {
+      id: sessionId,
+      status: 'ERROR',
+    },
     data: { status: 'COMPILING' },
   });
+  if (transition.count === 0) {
+    throw new OrchestrationCommandError(
+      'SESSION_ALREADY_ACTIVE',
+      'The session state changed before compilation could be retried.'
+    );
+  }
   notifyListener(sessionId, { type: 'status', status: 'COMPILING', currentRoleSlug: null });
 
   try {
@@ -547,7 +764,10 @@ export async function retryCompileSession(sessionId: string): Promise<void> {
       type: 'error',
       error: `Manual retry compilation error: ${err.message || err}`,
     });
-    throw err;
+    throw new OrchestrationCommandError(
+      'COMPILATION_FAILED',
+      `Compilation failed: ${err.message || err}`,
+      { cause: err }
+    );
   }
 }
-
