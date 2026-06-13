@@ -182,7 +182,7 @@ describe('history-summarizer', () => {
     assert.ok(result.newSummary.includes('LegacyQuestionOwner?'));
   });
 
-  it('should bound structured facts categories and truncate individual item characters', async () => {
+  it('should bound structured facts item characters but not slice decisions', async () => {
     // Generate 60 decisions in messages, one of which is very long
     const messages = Array.from({ length: 15 }, (_, i) => {
       let content = `Message ${i}`;
@@ -203,15 +203,40 @@ describe('history-summarizer', () => {
     });
 
     assert.ok(result);
-    // Categorical list is capped to 50 items in the structured facts section
+    // Decisions category list must not be sliced (should have all 61 decisions, 60 + 1 very long)
     const parts = result.newSummary.split('### STRUCTURED FACTS');
     const structuredPart = parts[1] || '';
     const decisionMatches = structuredPart.match(/DecisionNumber/g);
-    assert.ok(decisionMatches && decisionMatches.length <= 50);
-    // VeryLongDecision should be truncated to 500 chars (approx. 500 chars, so contains X but is not full length)
+    assert.strictEqual(decisionMatches && decisionMatches.length, 60);
+
+    // VeryLongDecision should be truncated to 200 chars
     assert.ok(result.newSummary.includes('VeryLongDecision'));
     const truncatedLine = result.newSummary.split('\n').find(line => line.includes('VeryLongDecision'));
-    assert.ok(truncatedLine && truncatedLine.length < 520);
+    assert.ok(truncatedLine && truncatedLine.length < 220);
     assert.ok(truncatedLine.includes('...'));
+  });
+
+  it('should reset category parsing on legacy fallback sender lines to avoid false structured facts', async () => {
+    const legacySummary = `
+- PM spoke: "Initial prompt"
+  Extracted Data:
+  Decisions:
+    * LegacyDecision1
+- QA spoke: "Need tests"
+    `;
+    const messages = Array.from({ length: 15 }, (_, i) => ({ sender: 'PM', content: `Message ${i}` }));
+    const result = await summarizeHistoryIfNeeded({
+      messages,
+      currentSummary: legacySummary,
+      summarizedMessageCount: 0,
+      registeredSlugs: ['PM']
+    });
+
+    assert.ok(result);
+    assert.ok(result.newSummary.includes('LegacyDecision1'));
+    // The QA spoke line must NOT be parsed as a decision!
+    const parts = result.newSummary.split('### STRUCTURED FACTS');
+    const structuredPart = parts[1] || '';
+    assert.ok(!structuredPart.includes('Need tests'));
   });
 });

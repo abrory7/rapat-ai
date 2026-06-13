@@ -159,6 +159,8 @@ export function parseStructuredFacts(text: string): ExtractedFacts {
       currentCategory = 'unresolved';
     } else if (lower.startsWith('conclusions:')) {
       currentCategory = 'conclusions';
+    } else if ((trimmed.startsWith('-') || trimmed.startsWith('*')) && (lower.includes(' spoke:') || lower.includes('delegated to'))) {
+      currentCategory = null;
     } else if (trimmed.startsWith('*') || trimmed.startsWith('-')) {
       const match = trimmed.match(/^[-*]\s*(.*)$/);
       const content = match ? match[1].trim() : '';
@@ -227,8 +229,7 @@ export function extractFactsFromText(text: string, registeredSlugs: string[]): E
 export function boundExtractedFacts(facts: ExtractedFacts): ExtractedFacts {
   const limitList = (list: string[]) =>
     list
-      .map(item => item.length > 500 ? item.substring(0, 497) + '...' : item)
-      .slice(-50);
+      .map(item => item.length > 200 ? item.substring(0, 197) + '...' : item);
 
   return {
     decisions: limitList(facts.decisions),
