@@ -204,13 +204,14 @@ async function compilePlanningDocumentInternal(sessionId: string): Promise<strin
 
 export async function compilePlanningDocument(sessionId: string): Promise<string> {
   const maxAttempts = 3;
-  let lastError: any;
+  let lastError: unknown;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       return await compilePlanningDocumentInternal(sessionId);
-    } catch (err: any) {
+    } catch (err: unknown) {
       lastError = err;
-      console.warn(`[Compilation] Attempt ${attempt} failed: ${err.message || err}`);
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      console.warn(`[Compilation] Attempt ${attempt} failed: ${errorMessage}`);
       if (attempt < maxAttempts) {
         const delay = attempt * 2000;
         console.log(`[Compilation] Retrying in ${delay / 1000}s...`);

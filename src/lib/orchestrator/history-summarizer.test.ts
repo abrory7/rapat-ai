@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
-import { summarizeHistoryIfNeeded, createDeterministicSummary } from './history-summarizer';
+import { summarizeHistoryIfNeeded } from './history-summarizer';
 
 describe('history-summarizer', () => {
   it('should return null if messages are 12 or less', async () => {
